@@ -1,3 +1,6 @@
+//! SOCKS proxy clients
+#![warn(missing_docs)]
+
 extern crate byteorder;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
@@ -5,13 +8,21 @@ use std::io::{self, Read, Write};
 use std::net::{TcpStream, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
                ToSocketAddrs};
 
+/// A description of a connection target.
 #[derive(Debug, Clone)]
 pub enum TargetAddr {
+    /// Connect to an IP address.
     Ip(SocketAddr),
+    /// Connect to a fully qualified domain name.
+    ///
+    /// The domain name will be passed along to the proxy server and DNS lookup
+    /// will happen there.
     Domain(String, u16),
 }
 
+/// A trait for objects that can be converted to `TargetAddr`.
 pub trait ToTargetAddr {
+    /// Converts the value of `self` to a a `TargetAddr`.
     fn to_target_addr(&self) -> io::Result<TargetAddr>;
 }
 
@@ -102,12 +113,22 @@ impl<'a> ToTargetAddr for &'a str {
     }
 }
 
+/// A SOCKS4 client.
+#[derive(Debug)]
 pub struct Socks4Socket {
     socket: TcpStream,
     addr: SocketAddrV4,
 }
 
 impl Socks4Socket {
+    /// Connects to a target server through a SOCKS4 proxy.
+    ///
+    /// # Note
+    ///
+    /// If `target` is a `TargetAddr::Domain`, the domain name will be forwarded
+    /// to the proxy server using the SOCKS4A protocol extension. If the proxy
+    /// server does not support SOCKS4A, consider performing the DNS lookup
+    /// locally and passing a `TargetAddr::Ip`.
     pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Socket>
         where T: ToSocketAddrs,
               U: ToTargetAddr
@@ -178,8 +199,25 @@ impl Socks4Socket {
         })
     }
 
+    /// Returns the proxy-side address of the connection between the proxy and
+    /// target server.
     pub fn proxy_addr(&self) -> SocketAddrV4 {
         self.addr
+    }
+
+    /// Returns a shared reference to the inner `TcpStream`.
+    pub fn get_ref(&self) -> &TcpStream {
+        &self.socket
+    }
+
+    /// Returns a mutable reference to the inner `TcpStream`.
+    pub fn get_mut(&mut self) -> &mut TcpStream {
+        &mut self.socket
+    }
+
+    /// Consumes the `Socks4Socket`, returning the inner `TcpStream`.
+    pub fn into_inner(self) -> TcpStream {
+        self.socket
     }
 }
 
