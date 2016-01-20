@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["TargetAddr","A description of a connection target."]],"struct":[["Socks4Socket","A SOCKS4 client."]],"trait":[["ToTargetAddr","A trait for objects that can be converted to `TargetAddr`."]]});
