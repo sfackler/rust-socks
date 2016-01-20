@@ -4,23 +4,106 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, Ipv4Addr, SocketAddrV4, ToSocketAddrs};
 
+#[derive(Clone)]
+pub enum Socks4Addr {
+    Ip(SocketAddrV4),
+    Domain(String, u16),
+}
+
+pub trait ToSocks4Addr {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr>;
+}
+
+impl ToSocks4Addr for Socks4Addr {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr> {
+        Ok(self.clone())
+    }
+}
+
+impl ToSocks4Addr for SocketAddrV4 {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr> {
+        Ok(Socks4Addr::Ip(*self))
+    }
+}
+
+impl ToSocks4Addr for (Ipv4Addr, u16) {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr> {
+        SocketAddrV4::new(self.0, self.1).to_socks4_addr()
+    }
+}
+
+impl<'a> ToSocks4Addr for (&'a str, u16) {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr> {
+        // try to parse as an IP first
+        if let Ok(addr) = self.0.parse::<Ipv4Addr>() {
+            return (addr, self.1).to_socks4_addr();
+        }
+
+        Ok(Socks4Addr::Domain(self.0.to_owned(), self.1))
+    }
+}
+
+impl<'a> ToSocks4Addr for &'a str {
+    fn to_socks4_addr(&self) -> io::Result<Socks4Addr> {
+        // try to parse as an IP first
+        if let Ok(addr) = self.parse::<SocketAddrV4>() {
+            return addr.to_socks4_addr();
+        }
+
+        // split the string by ':' and convert the second part to u16
+        let mut parts_iter = self.rsplitn(2, ':');
+        let port_str = match parts_iter.next() {
+            Some(s) => s,
+            None => return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              "invalid socket address")),
+        };
+
+        let host = match parts_iter.next() {
+            Some(s) => s,
+            None => return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              "invalid socket address")),
+        };
+
+        let port: u16 = match port_str.parse() {
+            Ok(p) => p,
+            Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid port value")),
+        };
+
+        (host, port).to_socks4_addr()
+    }
+}
+
 pub struct Socks4Socket {
     socket: TcpStream,
     addr: SocketAddrV4,
 }
 
 impl Socks4Socket {
-    pub fn connect<T>(proxy: T, target: Ipv4Addr, port: u16) -> io::Result<Socks4Socket>
-        where T: ToSocketAddrs
+    pub fn connect<T, U>(proxy: T, target: U) -> io::Result<Socks4Socket>
+        where T: ToSocketAddrs,
+              U: ToSocks4Addr,
     {
         let mut socket = try!(TcpStream::connect(proxy));
+
+        let target = try!(target.to_socks4_addr());
 
         let mut packet = vec![];
         let _ = packet.write_u8(4); // version
         let _ = packet.write_u8(1); // command code
-        let _ = packet.write_u16::<BigEndian>(port); // port
-        let _ = packet.write_u32::<BigEndian>(target.into()); // ip
-        let _ = packet.write_u8(0); // empty user id
+        match try!(target.to_socks4_addr()) {
+            Socks4Addr::Ip(addr) => {
+                let _ = packet.write_u16::<BigEndian>(addr.port());
+                let _ = packet.write_u32::<BigEndian>((*addr.ip()).into());
+                let _ = packet.write_u8(0); // empty user id
+            }
+            Socks4Addr::Domain(ref host, port) => {
+                let _ = packet.write_u16::<BigEndian>(port);
+                let _ = packet.write_u32::<BigEndian>(Ipv4Addr::new(0, 0, 0, 1).into());
+                let _ = packet.write_u8(0);
+                let _ = packet.extend(host.as_bytes().iter().cloned());
+                let _ = packet.write_u8(0);
+            }
+        }
 
         try!(socket.write_all(&packet));
 
@@ -98,15 +181,25 @@ mod test {
 
     #[test]
     fn google() {
-        let mut socket = Socks4Socket::connect("127.0.0.1:8080",
-                                               "216.58.192.46".parse().unwrap(),
-                                               80).unwrap();
+        let mut socket = Socks4Socket::connect("127.0.0.1:8080", "216.58.192.46:80").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
         socket.read_to_end(&mut result).unwrap();
 
-        assert!(result.starts_with(b"HTTP/1.0 200 OK"));
-        assert!(result.ends_with(b"</html>"));
+        assert!(result.starts_with(b"HTTP/1.0"));
+        assert!(result.ends_with(b"</HTML>\r\n"));
+    }
+
+    #[test]
+    fn google_dns() {
+        let mut socket = Socks4Socket::connect("127.0.0.1:8080", "google.com:80").unwrap();
+
+        socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
+        let mut result = vec![];
+        socket.read_to_end(&mut result).unwrap();
+
+        assert!(result.starts_with(b"HTTP/1.0"), "{}", String::from_utf8_lossy(&result));
+        assert!(result.ends_with(b"</HTML>\r\n"));
     }
 }
