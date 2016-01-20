@@ -4,10 +4,13 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, Ipv4Addr, SocketAddrV4, ToSocketAddrs};
 
-pub struct Socks4Socket(TcpStream);
+pub struct Socks4Socket {
+    socket: TcpStream,
+    addr: SocketAddrV4,
+}
 
 impl Socks4Socket {
-    pub fn connect<T>(proxy: T, target: Ipv4Addr, port: u16) -> io::Result<(Socks4Socket, SocketAddrV4)>
+    pub fn connect<T>(proxy: T, target: Ipv4Addr, port: u16) -> io::Result<Socks4Socket>
         where T: ToSocketAddrs
     {
         let mut socket = try!(TcpStream::connect(proxy));
@@ -44,39 +47,46 @@ impl Socks4Socket {
         let port = try!(response.read_u16::<BigEndian>());
         let ip = Ipv4Addr::from(try!(response.read_u32::<BigEndian>()));
 
-        Ok((Socks4Socket(socket), SocketAddrV4::new(ip, port)))
+        Ok(Socks4Socket {
+            socket: socket,
+            addr: SocketAddrV4::new(ip, port)
+        })
+    }
+
+    pub fn proxy_addr(&self) -> SocketAddrV4 {
+        self.addr
     }
 }
 
 impl Read for Socks4Socket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
+        self.socket.read(buf)
     }
 }
 
 impl<'a> Read for &'a Socks4Socket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&self.0).read(buf)
+        (&self.socket).read(buf)
     }
 }
 
 impl Write for Socks4Socket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        self.socket.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
+        self.socket.flush()
     }
 }
 
 impl<'a> Write for &'a Socks4Socket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.0).write(buf)
+        (&self.socket).write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        (&self.0).flush()
+        (&self.socket).flush()
     }
 }
 
@@ -90,7 +100,7 @@ mod test {
     fn google() {
         let mut socket = Socks4Socket::connect("127.0.0.1:8080",
                                                "216.58.192.46".parse().unwrap(),
-                                               80).unwrap().0;
+                                               80).unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
