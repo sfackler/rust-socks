@@ -2,7 +2,8 @@ extern crate byteorder;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write};
-use std::net::{TcpStream, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
+use std::net::{TcpStream, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
+               ToSocketAddrs};
 
 #[derive(Clone)]
 pub enum SocksAddr {
@@ -80,14 +81,16 @@ impl<'a> ToSocksAddr for &'a str {
         let mut parts_iter = self.rsplitn(2, ':');
         let port_str = match parts_iter.next() {
             Some(s) => s,
-            None => return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                              "invalid socket address")),
+            None => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid socket address"))
+            }
         };
 
         let host = match parts_iter.next() {
             Some(s) => s,
-            None => return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                              "invalid socket address")),
+            None => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid socket address"))
+            }
         };
 
         let port: u16 = match port_str.parse() {
@@ -107,7 +110,7 @@ pub struct Socks4Socket {
 impl Socks4Socket {
     pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Socket>
         where T: ToSocketAddrs,
-              U: ToSocksAddr,
+              U: ToSocksAddr
     {
         let mut socket = try!(TcpStream::connect(proxy));
 
@@ -151,15 +154,19 @@ impl Socks4Socket {
         }
 
         match try!(response.read_u8()) {
-            90 => {},
+            90 => {}
             91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
-            92 => return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                            "request rejected because SOCKS server cannot connect to \
-                                             idnetd on the client")),
-            93 => return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                            "request rejected because the client program and identd \
-                                             report different user-ids")),
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code"))
+            92 => {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                                          "request rejected because SOCKS server cannot connect \
+                                           to idnetd on the client"))
+            }
+            93 => {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                                          "request rejected because the client program and \
+                                           identd report different user-ids"))
+            }
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
         }
 
         let port = try!(response.read_u16::<BigEndian>());
@@ -167,7 +174,7 @@ impl Socks4Socket {
 
         Ok(Socks4Socket {
             socket: socket,
-            addr: SocketAddrV4::new(ip, port)
+            addr: SocketAddrV4::new(ip, port),
         })
     }
 
@@ -234,7 +241,7 @@ mod test {
         let mut result = vec![];
         socket.read_to_end(&mut result).unwrap();
 
-        assert!(result.starts_with(b"HTTP/1.0"), "{}", String::from_utf8_lossy(&result));
+        assert!(result.starts_with(b"HTTP/1.0"));
         assert!(result.ends_with(b"</HTML>\r\n"));
     }
 }
