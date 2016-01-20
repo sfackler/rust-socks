@@ -256,12 +256,24 @@ impl<'a> Write for &'a Socks4Socket {
 #[cfg(test)]
 mod test {
     use std::io::{Read, Write};
+    use std::net::{SocketAddr, ToSocketAddrs};
 
     use super::*;
 
     #[test]
     fn google() {
-        let mut socket = Socks4Socket::connect("127.0.0.1:8080", "216.58.192.46:80", "").unwrap();
+        let addr = "google.com:80".to_socket_addrs()
+                                  .unwrap()
+                                  .filter_map(|a| {
+                                      match a {
+                                          SocketAddr::V4(a) => Some(a),
+                                          SocketAddr::V6(_) => None
+                                      }
+                                  })
+                                  .next()
+                                  .unwrap();
+
+        let mut socket = Socks4Socket::connect("127.0.0.1:8080", addr, "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
