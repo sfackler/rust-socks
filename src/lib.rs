@@ -130,15 +130,15 @@ impl Socks4Socket {
                 };
                 let _ = packet.write_u16::<BigEndian>(addr.port());
                 let _ = packet.write_u32::<BigEndian>((*addr.ip()).into());
-                let _ = packet.extend(userid.as_bytes().iter().cloned());
+                let _ = packet.write_all(userid.as_bytes());
                 let _ = packet.write_u8(0);
             }
             SocksAddr::Domain(ref host, port) => {
                 let _ = packet.write_u16::<BigEndian>(port);
                 let _ = packet.write_u32::<BigEndian>(Ipv4Addr::new(0, 0, 0, 1).into());
-                let _ = packet.extend(userid.as_bytes().iter().cloned());
+                let _ = packet.write_all(userid.as_bytes());
                 let _ = packet.write_u8(0);
-                let _ = packet.extend(host.as_bytes().iter().cloned());
+                let _ = packet.extend(host.as_bytes());
                 let _ = packet.write_u8(0);
             }
         }
