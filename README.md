@@ -2,6 +2,8 @@
 
 SOCKS proxy support for Rust.
 
+[Documentation](https://sfackler.github.io/rust-socks/doc/v0.1.0/socks)
+
 ## License
 
 Licensed under either of
