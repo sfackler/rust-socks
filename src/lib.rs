@@ -5,76 +5,76 @@ use std::io::{self, Read, Write};
 use std::net::{TcpStream, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
                ToSocketAddrs};
 
-#[derive(Clone)]
-pub enum SocksAddr {
+#[derive(Debug, Clone)]
+pub enum TargetAddr {
     Ip(SocketAddr),
     Domain(String, u16),
 }
 
-pub trait ToSocksAddr {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr>;
+pub trait ToTargetAddr {
+    fn to_target_addr(&self) -> io::Result<TargetAddr>;
 }
 
-impl ToSocksAddr for SocksAddr {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
+impl ToTargetAddr for TargetAddr {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
         Ok(self.clone())
     }
 }
 
-impl ToSocksAddr for SocketAddr {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
-        Ok(SocksAddr::Ip(*self))
+impl ToTargetAddr for SocketAddr {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
+        Ok(TargetAddr::Ip(*self))
     }
 }
 
-impl ToSocksAddr for SocketAddrV4 {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
-        SocketAddr::V4(*self).to_socks_addr()
+impl ToTargetAddr for SocketAddrV4 {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
+        SocketAddr::V4(*self).to_target_addr()
     }
 }
 
-impl ToSocksAddr for SocketAddrV6 {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
-        SocketAddr::V6(*self).to_socks_addr()
+impl ToTargetAddr for SocketAddrV6 {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
+        SocketAddr::V6(*self).to_target_addr()
     }
 }
 
-impl ToSocksAddr for (Ipv4Addr, u16) {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
-        SocketAddrV4::new(self.0, self.1).to_socks_addr()
+impl ToTargetAddr for (Ipv4Addr, u16) {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
+        SocketAddrV4::new(self.0, self.1).to_target_addr()
     }
 }
 
-impl ToSocksAddr for (Ipv6Addr, u16) {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
-        SocketAddrV6::new(self.0, self.1, 0, 0).to_socks_addr()
+impl ToTargetAddr for (Ipv6Addr, u16) {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
+        SocketAddrV6::new(self.0, self.1, 0, 0).to_target_addr()
     }
 }
 
-impl<'a> ToSocksAddr for (&'a str, u16) {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
+impl<'a> ToTargetAddr for (&'a str, u16) {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
         // try to parse as an IP first
         if let Ok(addr) = self.0.parse::<Ipv4Addr>() {
-            return (addr, self.1).to_socks_addr();
+            return (addr, self.1).to_target_addr();
         }
 
         if let Ok(addr) = self.0.parse::<Ipv6Addr>() {
-            return (addr, self.1).to_socks_addr();
+            return (addr, self.1).to_target_addr();
         }
 
-        Ok(SocksAddr::Domain(self.0.to_owned(), self.1))
+        Ok(TargetAddr::Domain(self.0.to_owned(), self.1))
     }
 }
 
-impl<'a> ToSocksAddr for &'a str {
-    fn to_socks_addr(&self) -> io::Result<SocksAddr> {
+impl<'a> ToTargetAddr for &'a str {
+    fn to_target_addr(&self) -> io::Result<TargetAddr> {
         // try to parse as an IP first
         if let Ok(addr) = self.parse::<SocketAddrV4>() {
-            return addr.to_socks_addr();
+            return addr.to_target_addr();
         }
 
         if let Ok(addr) = self.parse::<SocketAddrV6>() {
-            return addr.to_socks_addr();
+            return addr.to_target_addr();
         }
 
         // split the string by ':' and convert the second part to u16
@@ -98,7 +98,7 @@ impl<'a> ToSocksAddr for &'a str {
             Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid port value")),
         };
 
-        (host, port).to_socks_addr()
+        (host, port).to_target_addr()
     }
 }
 
@@ -110,17 +110,17 @@ pub struct Socks4Socket {
 impl Socks4Socket {
     pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Socket>
         where T: ToSocketAddrs,
-              U: ToSocksAddr
+              U: ToTargetAddr
     {
         let mut socket = try!(TcpStream::connect(proxy));
 
-        let target = try!(target.to_socks_addr());
+        let target = try!(target.to_target_addr());
 
         let mut packet = vec![];
         let _ = packet.write_u8(4); // version
         let _ = packet.write_u8(1); // command code
-        match try!(target.to_socks_addr()) {
-            SocksAddr::Ip(addr) => {
+        match try!(target.to_target_addr()) {
+            TargetAddr::Ip(addr) => {
                 let addr = match addr {
                     SocketAddr::V4(addr) => addr,
                     SocketAddr::V6(_) => {
@@ -133,7 +133,7 @@ impl Socks4Socket {
                 let _ = packet.write_all(userid.as_bytes());
                 let _ = packet.write_u8(0);
             }
-            SocksAddr::Domain(ref host, port) => {
+            TargetAddr::Domain(ref host, port) => {
                 let _ = packet.write_u16::<BigEndian>(port);
                 let _ = packet.write_u32::<BigEndian>(Ipv4Addr::new(0, 0, 0, 1).into());
                 let _ = packet.write_all(userid.as_bytes());
