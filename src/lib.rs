@@ -1,4 +1,5 @@
 //! SOCKS proxy clients
+#![doc(html_root_url="https://sfackler.github.io/rust-socks/doc/v0.1.0")]
 #![warn(missing_docs)]
 
 extern crate byteorder;
