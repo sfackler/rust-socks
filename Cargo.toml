@@ -2,3 +2,6 @@
 name = "socks"
 version = "0.1.0"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
+
+[dependencies]
+byteorder = "0.4"
