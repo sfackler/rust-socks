@@ -117,7 +117,7 @@ impl<'a> ToTargetAddr for &'a str {
 #[derive(Debug)]
 pub struct Socks4Socket {
     socket: TcpStream,
-    addr: SocketAddrV4,
+    proxy_addr: SocketAddrV4,
 }
 
 impl Socks4Socket {
@@ -195,14 +195,14 @@ impl Socks4Socket {
 
         Ok(Socks4Socket {
             socket: socket,
-            addr: SocketAddrV4::new(ip, port),
+            proxy_addr: SocketAddrV4::new(ip, port),
         })
     }
 
     /// Returns the proxy-side address of the connection between the proxy and
     /// target server.
     pub fn proxy_addr(&self) -> SocketAddrV4 {
-        self.addr
+        self.proxy_addr
     }
 
     /// Returns a shared reference to the inner `TcpStream`.
