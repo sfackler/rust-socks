@@ -282,7 +282,7 @@ mod test {
 
         println!("{}", String::from_utf8_lossy(&result));
         assert!(result.starts_with(b"HTTP/1.0"));
-        assert!(result.ends_with(b"</HTML>\r\n"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
     }
 
     #[test]
@@ -295,6 +295,6 @@ mod test {
 
         println!("{}", String::from_utf8_lossy(&result));
         assert!(result.starts_with(b"HTTP/1.0"));
-        assert!(result.ends_with(b"</HTML>\r\n"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
     }
 }
