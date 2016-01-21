@@ -5,4 +5,7 @@ authors = ["Steven Fackler <sfackler@palantir.com>"]
 
 [dependencies]
 socks = { version = "0.1", path = "../socks" }
-hyper = "0.7"
+hyper = { version = "0.7", default_features = false }
+
+[dev-dependencies]
+hyper = "0.7" # to pick up openssl stuff
