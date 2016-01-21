@@ -280,6 +280,7 @@ mod test {
         let mut result = vec![];
         socket.read_to_end(&mut result).unwrap();
 
+        println!("{}", String::from_utf8_lossy(&result));
         assert!(result.starts_with(b"HTTP/1.0"));
         assert!(result.ends_with(b"</HTML>\r\n"));
     }
@@ -292,6 +293,7 @@ mod test {
         let mut result = vec![];
         socket.read_to_end(&mut result).unwrap();
 
+        println!("{}", String::from_utf8_lossy(&result));
         assert!(result.starts_with(b"HTTP/1.0"));
         assert!(result.ends_with(b"</HTML>\r\n"));
     }
