@@ -1,3 +1,6 @@
+//! SOCKS proxy support for Hyper clients
+#![warn(missing_docs)]
+
 extern crate socks;
 extern crate hyper;
 
@@ -18,6 +21,7 @@ impl ToSocketAddrs for CachedAddrs {
     }
 }
 
+/// A connector that will produce proxied HttpStreams.
 #[derive(Debug)]
 pub struct Socks4HttpConnector {
     addrs:  CachedAddrs,
@@ -25,6 +29,8 @@ pub struct Socks4HttpConnector {
 }
 
 impl Socks4HttpConnector {
+    /// Creates a new `Socks4HttpConnector` which will connect to the specified
+    /// proxy with the specified userid.
     pub fn new<T: ToSocketAddrs>(proxy: T, userid: &str) -> io::Result<Socks4HttpConnector> {
         Ok(Socks4HttpConnector {
             addrs: CachedAddrs(try!(proxy.to_socket_addrs()).collect()),
@@ -47,6 +53,7 @@ impl NetworkConnector for Socks4HttpConnector {
     }
 }
 
+/// A connector that will produce protected, proxied HTTP streams using SSL.
 #[derive(Debug)]
 pub struct Socks4HttpsConnector<S> {
     addrs: CachedAddrs,
@@ -55,6 +62,9 @@ pub struct Socks4HttpsConnector<S> {
 }
 
 impl<S: Ssl> Socks4HttpsConnector<S> {
+    /// Creates a new `Socks4HttpsConnector` which will connect to the specified
+    /// proxy with the specified userid, and use the provided SSL implementation
+    /// to encrypt the resulting stream.
     pub fn new<T: ToSocketAddrs>(proxy: T, userid: &str, ssl: S) -> io::Result<Self> {
         Ok(Socks4HttpsConnector {
             addrs: CachedAddrs(try!(proxy.to_socket_addrs()).collect()),
