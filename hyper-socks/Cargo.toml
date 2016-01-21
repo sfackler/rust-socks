@@ -1,0 +1,8 @@
+[package]
+name = "hyper-socks"
+version = "0.1.0"
+authors = ["Steven Fackler <sfackler@palantir.com>"]
+
+[dependencies]
+socks = { version = "0.1", path = "../socks" }
+hyper = "0.7"
