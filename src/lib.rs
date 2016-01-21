@@ -114,6 +114,37 @@ impl<'a> ToTargetAddr for &'a str {
     }
 }
 
+fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
+    let mut response = [0u8; 8];
+    try!(socket.read_exact(&mut response));
+    let mut response = &response[..];
+
+    if try!(response.read_u8()) != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
+    }
+
+    match try!(response.read_u8()) {
+        90 => {}
+        91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
+        92 => {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                                      "request rejected because SOCKS server cannot connect \
+                                       to idnetd on the client"))
+        }
+        93 => {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied,
+                                      "request rejected because the client program and \
+                                       identd report different user-ids"))
+        }
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
+    }
+
+    let port = try!(response.read_u16::<BigEndian>());
+    let ip = Ipv4Addr::from(try!(response.read_u32::<BigEndian>()));
+
+    Ok(SocketAddrV4::new(ip, port))
+}
+
 /// A SOCKS4 client.
 #[derive(Debug)]
 pub struct Socks4Stream {
@@ -166,37 +197,11 @@ impl Socks4Stream {
         }
 
         try!(socket.write_all(&packet));
-
-        let mut response = [0u8; 8];
-        try!(socket.read_exact(&mut response));
-        let mut response = &response[..];
-
-        if try!(response.read_u8()) != 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
-        }
-
-        match try!(response.read_u8()) {
-            90 => {}
-            91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
-            92 => {
-                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                          "request rejected because SOCKS server cannot connect \
-                                           to idnetd on the client"))
-            }
-            93 => {
-                return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                          "request rejected because the client program and \
-                                           identd report different user-ids"))
-            }
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
-        }
-
-        let port = try!(response.read_u16::<BigEndian>());
-        let ip = Ipv4Addr::from(try!(response.read_u32::<BigEndian>()));
+        let proxy_addr = try!(read_response(&mut socket));
 
         Ok(Socks4Stream {
             socket: socket,
-            proxy_addr: SocketAddrV4::new(ip, port),
+            proxy_addr: proxy_addr,
         })
     }
 
