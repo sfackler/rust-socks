@@ -165,13 +165,20 @@ impl Socks4Stream {
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
+        Self::connect_raw(1, proxy, target, userid)
+    }
+
+    fn connect_raw<T, U>(command: u8, proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
+        where T: ToSocketAddrs,
+              U: ToTargetAddr
+    {
         let mut socket = try!(TcpStream::connect(proxy));
 
         let target = try!(target.to_target_addr());
 
         let mut packet = vec![];
         let _ = packet.write_u8(4); // version
-        let _ = packet.write_u8(1); // command code
+        let _ = packet.write_u8(command); // command code
         match try!(target.to_target_addr()) {
             TargetAddr::Ip(addr) => {
                 let addr = match addr {
@@ -426,26 +433,60 @@ impl<'a> Write for &'a Socks5Stream {
     }
 }
 
+#[derive(Debug)]
+pub struct Socks4Listener(Socks4Stream);
+
+impl Socks4Listener {
+    pub fn bind<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Listener>
+        where T: ToSocketAddrs,
+              U: ToTargetAddr
+    {
+        Socks4Stream::connect_raw(2, proxy, target, userid).map(Socks4Listener)
+    }
+
+    pub fn proxy_addr(&self) -> io::Result<SocketAddr> {
+        if self.0.proxy_addr.ip().octets() != [0, 0, 0, 0] {
+            Ok(SocketAddr::V4(self.0.proxy_addr()))
+        } else {
+            let port = self.0.proxy_addr.port();
+            let peer = match try!(self.0.socket.peer_addr()) {
+                SocketAddr::V4(addr) => SocketAddr::V4(SocketAddrV4::new(*addr.ip(), port)),
+                SocketAddr::V6(addr) => SocketAddr::V6(SocketAddrV6::new(*addr.ip(), port, 0, 0)),
+            };
+            Ok(peer)
+        }
+    }
+
+    pub fn accept(mut self) -> io::Result<Socks4Stream> {
+        self.0.proxy_addr = try!(read_response(&mut self.0.socket));
+        Ok(self.0)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::io::{Read, Write};
-    use std::net::{SocketAddr, ToSocketAddrs};
+    use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs, TcpStream};
 
     use super::*;
 
+    fn google_ip() -> SocketAddrV4 {
+        "google.com:80"
+            .to_socket_addrs()
+            .unwrap()
+            .filter_map(|a| {
+                match a {
+                    SocketAddr::V4(a) => Some(a),
+                    SocketAddr::V6(_) => None,
+                }
+            })
+            .next()
+            .unwrap()
+    }
+
     #[test]
     fn google_v4() {
-        let addr = "google.com:80"
-                       .to_socket_addrs()
-                       .unwrap()
-                       .filter_map(|a| {
-                           match a {
-                               SocketAddr::V4(a) => Some(a),
-                               SocketAddr::V6(_) => None,
-                           }
-                       })
-                       .next()
-                       .unwrap();
+        let addr = google_ip();
 
         let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
 
@@ -474,7 +515,7 @@ mod test {
 
     #[test]
     fn google_v5() {
-        let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
+        let addr = google_ip();
 
         let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
 
@@ -498,5 +539,22 @@ mod test {
         println!("{}", String::from_utf8_lossy(&result));
         assert!(result.starts_with(b"HTTP/1.0"));
         assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
+    }
+
+    #[test]
+    fn bind() {
+        // First figure out our local address that we'll be connecting from
+        let socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
+        let addr = socket.proxy_addr();
+
+        let listener = Socks4Listener::bind("127.0.0.1:1080", addr, "").unwrap();
+        let addr = listener.proxy_addr().unwrap();
+        let mut end = TcpStream::connect(addr).unwrap();
+        let mut conn = listener.accept().unwrap();
+        conn.write_all(b"hello world");
+        drop(conn);
+        let mut result = vec![];
+        end.read_to_end(&mut result).unwrap();
+        assert_eq!(result, b"hello world");
     }
 }
