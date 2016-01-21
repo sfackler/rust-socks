@@ -6,7 +6,7 @@ license = "MIT/Apache-2.0"
 description = "SOCKS proxy clients"
 repository = "https://github.com/sfackler/rust-socks"
 documentation = "https://sfackler.github.io/rust-socks/doc/v0.1.0/socks"
-readme = "../README.md"
+readme = "README.md"
 
 [dependencies]
 byteorder = "0.4"
