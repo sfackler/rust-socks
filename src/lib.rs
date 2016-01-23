@@ -430,16 +430,17 @@ mod test {
 
     #[test]
     fn google_v4() {
-        let addr = "google.com:80".to_socket_addrs()
-                                  .unwrap()
-                                  .filter_map(|a| {
-                                      match a {
-                                          SocketAddr::V4(a) => Some(a),
-                                          SocketAddr::V6(_) => None
-                                      }
-                                  })
-                                  .next()
-                                  .unwrap();
+        let addr = "google.com:80"
+                       .to_socket_addrs()
+                       .unwrap()
+                       .filter_map(|a| {
+                           match a {
+                               SocketAddr::V4(a) => Some(a),
+                               SocketAddr::V6(_) => None,
+                           }
+                       })
+                       .next()
+                       .unwrap();
 
         let mut socket = Socks4Stream::connect("127.0.0.1:8080", addr, "").unwrap();
 
@@ -467,10 +468,7 @@ mod test {
 
     #[test]
     fn google_v5() {
-        let addr = "google.com:80".to_socket_addrs()
-                                  .unwrap()
-                                  .next()
-                                  .unwrap();
+        let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
 
         let mut socket = Socks4Stream::connect("127.0.0.1:8080", addr, "").unwrap();
 
