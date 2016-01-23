@@ -6,5 +6,7 @@ before_script:
 - ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
 - cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys
 - ssh -oStrictHostKeyChecking=no -Nf -D 127.0.0.1:8080 localhost
+- .travis/build_dante.sh
+- $HOME/dante/sbin/sockd -D -f $PWD/.travis/sockd.conf
 script:
 - cargo test

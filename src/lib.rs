@@ -442,7 +442,7 @@ mod test {
                        .next()
                        .unwrap();
 
-        let mut socket = Socks4Stream::connect("127.0.0.1:8080", addr, "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -455,6 +455,7 @@ mod test {
 
     #[test]
     fn google_dns_v4() {
+        // dante doesn't support SOCKS4A
         let mut socket = Socks4Stream::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
@@ -470,7 +471,7 @@ mod test {
     fn google_v5() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
 
-        let mut socket = Socks4Stream::connect("127.0.0.1:8080", addr, "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -483,7 +484,7 @@ mod test {
 
     #[test]
     fn google_dns_v5() {
-        let mut socket = Socks5Stream::connect("127.0.0.1:8080", "google.com:80").unwrap();
+        let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
