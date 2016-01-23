@@ -283,7 +283,7 @@ impl Socks5Stream {
 
         match try!(socket.read_u8()) {
             0 => {}
-            0xff => return Err(io::Error::new(io::ErrorKind::Other, "no acceptible auth methods")),
+            0xff => return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods")),
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown auth method")),
         }
 
