@@ -116,12 +116,12 @@ impl<'a> ToTargetAddr for &'a str {
 
 /// A SOCKS4 client.
 #[derive(Debug)]
-pub struct Socks4Socket {
+pub struct Socks4Stream {
     socket: TcpStream,
     proxy_addr: SocketAddrV4,
 }
 
-impl Socks4Socket {
+impl Socks4Stream {
     /// Connects to a target server through a SOCKS4 proxy.
     ///
     /// # Note
@@ -130,7 +130,7 @@ impl Socks4Socket {
     /// to the proxy server using the SOCKS4A protocol extension. If the proxy
     /// server does not support SOCKS4A, consider performing the DNS lookup
     /// locally and passing a `TargetAddr::Ip`.
-    pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Socket>
+    pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
@@ -194,7 +194,7 @@ impl Socks4Socket {
         let port = try!(response.read_u16::<BigEndian>());
         let ip = Ipv4Addr::from(try!(response.read_u32::<BigEndian>()));
 
-        Ok(Socks4Socket {
+        Ok(Socks4Stream {
             socket: socket,
             proxy_addr: SocketAddrV4::new(ip, port),
         })
@@ -216,25 +216,25 @@ impl Socks4Socket {
         &mut self.socket
     }
 
-    /// Consumes the `Socks4Socket`, returning the inner `TcpStream`.
+    /// Consumes the `Socks4Stream`, returning the inner `TcpStream`.
     pub fn into_inner(self) -> TcpStream {
         self.socket
     }
 }
 
-impl Read for Socks4Socket {
+impl Read for Socks4Stream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.socket.read(buf)
     }
 }
 
-impl<'a> Read for &'a Socks4Socket {
+impl<'a> Read for &'a Socks4Stream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         (&self.socket).read(buf)
     }
 }
 
-impl Write for Socks4Socket {
+impl Write for Socks4Stream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.socket.write(buf)
     }
@@ -244,7 +244,7 @@ impl Write for Socks4Socket {
     }
 }
 
-impl<'a> Write for &'a Socks4Socket {
+impl<'a> Write for &'a Socks4Stream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         (&self.socket).write(buf)
     }
@@ -274,7 +274,7 @@ mod test {
                                   .next()
                                   .unwrap();
 
-        let mut socket = Socks4Socket::connect("127.0.0.1:8080", addr, "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:8080", addr, "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -287,7 +287,7 @@ mod test {
 
     #[test]
     fn google_dns() {
-        let mut socket = Socks4Socket::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
