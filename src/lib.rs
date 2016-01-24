@@ -8,7 +8,7 @@ use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 pub use v4::{Socks4Stream, Socks4Listener};
-pub use v5::Socks5Stream;
+pub use v5::{Socks5Stream, Socks5Listener};
 
 mod v4;
 mod v5;
