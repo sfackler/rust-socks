@@ -1,6 +1,7 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write, BufReader};
-use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr, Ipv6Addr};
+use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
+               Ipv6Addr};
 
 use {ToTargetAddr, TargetAddr};
 
