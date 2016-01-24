@@ -1,5 +1,4 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
-use std::cmp;
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
@@ -232,10 +231,17 @@ impl Socks5Listener {
     }
 }
 
+/// A SOCKS5 UDP client.
 #[derive(Debug)]
-pub struct Socks5Datagram(UdpSocket, Socks5Stream);
+pub struct Socks5Datagram {
+    socket: UdpSocket,
+    // keeps the session alive
+    stream: Socks5Stream,
+}
 
 impl Socks5Datagram {
+    /// Creates a UDP socket bound to the specified address which will have its
+    /// traffic routed through the specified proxy.
     pub fn bind<T, U>(proxy: T, addr: U) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
               U: ToSocketAddrs,
@@ -245,24 +251,35 @@ impl Socks5Datagram {
 
         let socket = try!(UdpSocket::bind(addr));
 
-        Ok(Socks5Datagram(socket, stream))
+        Ok(Socks5Datagram {
+            socket: socket,
+            stream: stream
+        })
     }
 
+    /// Like `UdpSocket::send_to`.
+    ///
+    /// # Note
+    ///
+    /// The SOCKS protocol inserts a header at the beginning of the message. The
+    /// header will be 10 bytes for an IPv4 address, 22 bytes for an IPv6
+    /// address, and 7 bytes plus the length of the domain for a domain address.
     pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize> where A: ToTargetAddr {
         let addr = try!(addr.to_target_addr());
 
         let mut packet = vec![];
         let _ = packet.write_u16::<BigEndian>(0); // reserved
         let _ = packet.write_u8(0); // fragment
-        write_addr(&mut packet, &addr);
+        try!(write_addr(&mut packet, &addr));
         let _ = packet.write_all(buf);
 
-        self.0.send_to(&packet, self.1.proxy_addr)
+        self.socket.send_to(&packet, self.stream.proxy_addr)
     }
 
+    /// Like `UdpSocket::recv_from`.
     pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = try!(self.0.recv_from(&mut inner_buf)).0;
+        let len = try!(self.socket.recv_from(&mut inner_buf)).0;
 
         let mut inner_buf = &inner_buf[..len];
         if try!(inner_buf.read_u16::<BigEndian>()) != 0 {
@@ -276,8 +293,20 @@ impl Socks5Datagram {
         buf.write(inner_buf).map(|l| (l, addr))
     }
 
+    /// Returns the address of the proxy-side UDP socket through which all
+    /// messages will be routed.
     pub fn proxy_addr(&self) -> SocketAddr {
-        self.1.proxy_addr
+        self.stream.proxy_addr
+    }
+
+    /// Returns a shared reference to the inner socket.
+    pub fn get_ref(&self) -> &UdpSocket {
+        &self.socket
+    }
+
+    /// Returns a mutable reference to the inner socket.
+    pub fn get_mut(&mut self) -> &mut UdpSocket {
+        &mut self.socket
     }
 }
 
