@@ -156,10 +156,15 @@ impl<'a> Write for &'a Socks4Stream {
     }
 }
 
+/// A SOCKS4 BIND client.
 #[derive(Debug)]
 pub struct Socks4Listener(Socks4Stream);
 
 impl Socks4Listener {
+    /// Initiates a BIND request to the specified proxy.
+    ///
+    /// The proxy will filter incoming connections based on the value of
+    /// `target`.
     pub fn bind<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Listener>
         where T: ToSocketAddrs,
               U: ToTargetAddr
@@ -167,6 +172,10 @@ impl Socks4Listener {
         Socks4Stream::connect_raw(2, proxy, target, userid).map(Socks4Listener)
     }
 
+    /// The address of the proxy-side TCP listener.
+    ///
+    /// This should be forwarded to the remote process, which should open a
+    /// connection to it.
     pub fn proxy_addr(&self) -> io::Result<SocketAddr> {
         if self.0.proxy_addr.ip().octets() != [0, 0, 0, 0] {
             Ok(SocketAddr::V4(self.0.proxy_addr()))
@@ -180,6 +189,10 @@ impl Socks4Listener {
         }
     }
 
+    /// Waits for the remote process to connect to the proxy server.
+    ///
+    /// The value of `proxy_addr` should be forwarded to the remote process
+    /// before this method is called.
     pub fn accept(mut self) -> io::Result<Socks4Stream> {
         self.0.proxy_addr = try!(read_response(&mut self.0.socket));
         Ok(self.0)

@@ -202,7 +202,7 @@ mod test {
         let addr = listener.proxy_addr().unwrap();
         let mut end = TcpStream::connect(addr).unwrap();
         let mut conn = listener.accept().unwrap();
-        conn.write_all(b"hello world");
+        conn.write_all(b"hello world").unwrap();
         drop(conn);
         let mut result = vec![];
         end.read_to_end(&mut result).unwrap();
