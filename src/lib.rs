@@ -128,13 +128,13 @@ fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
         91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
         92 => {
             return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                      "request rejected because SOCKS server cannot connect \
-                                       to idnetd on the client"))
+                                      "request rejected because SOCKS server cannot connect to \
+                                       idnetd on the client"))
         }
         93 => {
             return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                      "request rejected because the client program and \
-                                       identd report different user-ids"))
+                                      "request rejected because the client program and identd \
+                                       report different user-ids"))
         }
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
     }
@@ -486,9 +486,7 @@ mod test {
 
     #[test]
     fn google_v4() {
-        let addr = google_ip();
-
-        let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -515,9 +513,7 @@ mod test {
 
     #[test]
     fn google_v5() {
-        let addr = google_ip();
-
-        let mut socket = Socks4Stream::connect("127.0.0.1:1080", addr, "").unwrap();
+        let mut socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
