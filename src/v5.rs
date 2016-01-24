@@ -2,6 +2,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
+use net2::UdpSocketExt;
 
 use {ToTargetAddr, TargetAddr};
 
@@ -252,6 +253,7 @@ impl Socks5Datagram {
         let stream = try!(Socks5Stream::connect_raw(3, proxy, dst));
 
         let socket = try!(UdpSocket::bind(addr));
+        try!(socket.connect(stream.proxy_addr));
 
         Ok(Socks5Datagram {
             socket: socket,
@@ -275,13 +277,13 @@ impl Socks5Datagram {
         try!(write_addr(&mut packet, &addr));
         let _ = packet.write_all(buf);
 
-        self.socket.send_to(&packet, self.stream.proxy_addr)
+        self.socket.send(&packet)
     }
 
     /// Like `UdpSocket::recv_from`.
     pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = try!(self.socket.recv_from(&mut inner_buf)).0;
+        let len = try!(self.socket.recv(&mut inner_buf));
 
         let mut inner_buf = &inner_buf[..len];
         if try!(inner_buf.read_u16::<BigEndian>()) != 0 {

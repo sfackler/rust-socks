@@ -3,6 +3,7 @@
 #![warn(missing_docs)]
 
 extern crate byteorder;
+extern crate net2;
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
