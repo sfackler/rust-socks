@@ -174,12 +174,14 @@ impl<'a> Write for &'a Socks5Stream {
 #[cfg(test)]
 mod test {
     use std::io::{Read, Write};
+    use std::net::ToSocketAddrs;
 
     use super::*;
 
     #[test]
-    fn google_v5() {
-        let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
+    fn google() {
+        let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
+        let mut socket = Socks5Stream::connect("127.0.0.1:1080", addr).unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -191,7 +193,7 @@ mod test {
     }
 
     #[test]
-    fn google_dns_v5() {
+    fn google_dns() {
         let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();

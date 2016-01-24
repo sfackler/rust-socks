@@ -221,7 +221,7 @@ mod test {
     }
 
     #[test]
-    fn google_v4() {
+    fn google() {
         let mut socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
@@ -234,7 +234,7 @@ mod test {
     }
 
     #[test]
-    fn google_dns_v4() {
+    fn google_dns() {
         // dante doesn't support SOCKS4A
         let mut socket = Socks4Stream::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
 
