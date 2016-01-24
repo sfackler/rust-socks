@@ -170,3 +170,36 @@ impl<'a> Write for &'a Socks5Stream {
         (&self.socket).flush()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::{Read, Write};
+
+    use super::*;
+
+    #[test]
+    fn google_v5() {
+        let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
+
+        socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
+        let mut result = vec![];
+        socket.read_to_end(&mut result).unwrap();
+
+        println!("{}", String::from_utf8_lossy(&result));
+        assert!(result.starts_with(b"HTTP/1.0"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
+    }
+
+    #[test]
+    fn google_dns_v5() {
+        let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
+
+        socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
+        let mut result = vec![];
+        socket.read_to_end(&mut result).unwrap();
+
+        println!("{}", String::from_utf8_lossy(&result));
+        assert!(result.starts_with(b"HTTP/1.0"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
+    }
+}

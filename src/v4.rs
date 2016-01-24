@@ -198,3 +198,69 @@ impl Socks4Listener {
         Ok(self.0)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs, TcpStream};
+
+    use super::*;
+
+    fn google_ip() -> SocketAddrV4 {
+        "google.com:80"
+            .to_socket_addrs()
+            .unwrap()
+            .filter_map(|a| {
+                match a {
+                    SocketAddr::V4(a) => Some(a),
+                    SocketAddr::V6(_) => None,
+                }
+            })
+            .next()
+            .unwrap()
+    }
+
+    #[test]
+    fn google_v4() {
+        let mut socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
+
+        socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
+        let mut result = vec![];
+        socket.read_to_end(&mut result).unwrap();
+
+        println!("{}", String::from_utf8_lossy(&result));
+        assert!(result.starts_with(b"HTTP/1.0"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
+    }
+
+    #[test]
+    fn google_dns_v4() {
+        // dante doesn't support SOCKS4A
+        let mut socket = Socks4Stream::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
+
+        socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
+        let mut result = vec![];
+        socket.read_to_end(&mut result).unwrap();
+
+        println!("{}", String::from_utf8_lossy(&result));
+        assert!(result.starts_with(b"HTTP/1.0"));
+        assert!(result.ends_with(b"</HTML>\r\n") || result.ends_with(b"</html>"));
+    }
+
+    #[test]
+    fn bind() {
+        // First figure out our local address that we'll be connecting from
+        let socket = Socks4Stream::connect("127.0.0.1:1080", google_ip(), "").unwrap();
+        let addr = socket.proxy_addr();
+
+        let listener = Socks4Listener::bind("127.0.0.1:1080", addr, "").unwrap();
+        let addr = listener.proxy_addr().unwrap();
+        let mut end = TcpStream::connect(addr).unwrap();
+        let mut conn = listener.accept().unwrap();
+        conn.write_all(b"hello world").unwrap();
+        drop(conn);
+        let mut result = vec![];
+        end.read_to_end(&mut result).unwrap();
+        assert_eq!(result, b"hello world");
+    }
+}
