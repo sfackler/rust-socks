@@ -5,6 +5,53 @@ use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream,
 
 use {ToTargetAddr, TargetAddr};
 
+fn read_response(socket: &mut BufReader<TcpStream>) -> io::Result<SocketAddr> {
+    if try!(socket.read_u8()) != 5 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
+    }
+
+    match try!(socket.read_u8()) {
+        0 => {}
+        1 => return Err(io::Error::new(io::ErrorKind::Other, "general SOCKS server failure")),
+        2 => {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                                      "connection not allowed by ruleset"))
+        }
+        3 => return Err(io::Error::new(io::ErrorKind::Other, "network unreachable")),
+        4 => return Err(io::Error::new(io::ErrorKind::Other, "host unreachable")),
+        5 => return Err(io::Error::new(io::ErrorKind::Other, "connection refused")),
+        6 => return Err(io::Error::new(io::ErrorKind::Other, "TTL expired")),
+        7 => return Err(io::Error::new(io::ErrorKind::Other, "command not supported")),
+        8 => return Err(io::Error::new(io::ErrorKind::Other, "address kind not supported")),
+        _ => return Err(io::Error::new(io::ErrorKind::Other, "unknown error")),
+    }
+
+    if try!(socket.read_u8()) != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved byte"));
+    }
+
+    match try!(socket.read_u8()) {
+        1 => {
+            let ip = Ipv4Addr::from(try!(socket.read_u32::<BigEndian>()));
+            let port = try!(socket.read_u16::<BigEndian>());
+            Ok(SocketAddr::V4(SocketAddrV4::new(ip, port)))
+        }
+        4 => {
+            let ip = Ipv6Addr::new(try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()),
+                                   try!(socket.read_u16::<BigEndian>()));
+            let port = try!(socket.read_u16::<BigEndian>());
+            Ok(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0)))
+        }
+        _ => Err(io::Error::new(io::ErrorKind::Other, "unsupported address type")),
+    }
+}
+
 /// A SOCKS5 client.
 #[derive(Debug)]
 pub struct Socks5Stream {
@@ -67,50 +114,7 @@ impl Socks5Stream {
         }
         try!(socket.get_mut().write_all(&packet));
 
-        if try!(socket.read_u8()) != 5 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
-        }
-
-        match try!(socket.read_u8()) {
-            0 => {}
-            1 => return Err(io::Error::new(io::ErrorKind::Other, "general SOCKS server failure")),
-            2 => {
-                return Err(io::Error::new(io::ErrorKind::Other,
-                                          "connection not allowed by ruleset"))
-            }
-            3 => return Err(io::Error::new(io::ErrorKind::Other, "network unreachable")),
-            4 => return Err(io::Error::new(io::ErrorKind::Other, "host unreachable")),
-            5 => return Err(io::Error::new(io::ErrorKind::Other, "connection refused")),
-            6 => return Err(io::Error::new(io::ErrorKind::Other, "TTL expired")),
-            7 => return Err(io::Error::new(io::ErrorKind::Other, "command not supported")),
-            8 => return Err(io::Error::new(io::ErrorKind::Other, "address kind not supported")),
-            _ => return Err(io::Error::new(io::ErrorKind::Other, "unknown error")),
-        }
-
-        if try!(socket.read_u8()) != 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved byte"));
-        }
-
-        let proxy_addr = match try!(socket.read_u8()) {
-            1 => {
-                let ip = Ipv4Addr::from(try!(socket.read_u32::<BigEndian>()));
-                let port = try!(socket.read_u16::<BigEndian>());
-                SocketAddr::V4(SocketAddrV4::new(ip, port))
-            }
-            4 => {
-                let ip = Ipv6Addr::new(try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()),
-                                       try!(socket.read_u16::<BigEndian>()));
-                let port = try!(socket.read_u16::<BigEndian>());
-                SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0))
-            }
-            _ => return Err(io::Error::new(io::ErrorKind::Other, "unsupported address type")),
-        };
+        let proxy_addr = try!(read_response(&mut socket));
 
         Ok(Socks5Stream {
             socket: socket.into_inner(),
