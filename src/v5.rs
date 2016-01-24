@@ -246,6 +246,8 @@ impl Socks5Datagram {
         where T: ToSocketAddrs,
               U: ToSocketAddrs,
     {
+        // we don't know what our IP is from the perspective of the proxy, so
+        // don't try to pass `addr` in here.
         let dst = TargetAddr::Ip(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
         let stream = try!(Socks5Stream::connect_raw(3, proxy, dst));
 
