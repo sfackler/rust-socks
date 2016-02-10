@@ -160,7 +160,7 @@ impl Socks5Stream {
         &mut self.socket
     }
 
-    /// Consumes the `Socks4Stream`, returning the inner `TcpStream`.
+    /// Consumes the `Socks5Stream`, returning the inner `TcpStream`.
     pub fn into_inner(self) -> TcpStream {
         self.socket
     }
