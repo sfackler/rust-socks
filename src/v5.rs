@@ -41,10 +41,7 @@ fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddr> {
     match try!(socket.read_u8()) {
         0 => {}
         1 => return Err(io::Error::new(io::ErrorKind::Other, "general SOCKS server failure")),
-        2 => {
-            return Err(io::Error::new(io::ErrorKind::Other,
-                                      "connection not allowed by ruleset"))
-        }
+        2 => return Err(io::Error::new(io::ErrorKind::Other, "connection not allowed by ruleset")),
         3 => return Err(io::Error::new(io::ErrorKind::Other, "network unreachable")),
         4 => return Err(io::Error::new(io::ErrorKind::Other, "host unreachable")),
         5 => return Err(io::Error::new(io::ErrorKind::Other, "connection refused")),
@@ -245,7 +242,7 @@ impl Socks5Datagram {
     /// traffic routed through the specified proxy.
     pub fn bind<T, U>(proxy: T, addr: U) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
-              U: ToSocketAddrs,
+              U: ToSocketAddrs
     {
         // we don't know what our IP is from the perspective of the proxy, so
         // don't try to pass `addr` in here.
@@ -257,7 +254,7 @@ impl Socks5Datagram {
 
         Ok(Socks5Datagram {
             socket: socket,
-            stream: stream
+            stream: stream,
         })
     }
 
@@ -268,7 +265,9 @@ impl Socks5Datagram {
     /// The SOCKS protocol inserts a header at the beginning of the message. The
     /// header will be 10 bytes for an IPv4 address, 22 bytes for an IPv6
     /// address, and 7 bytes plus the length of the domain for a domain address.
-    pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize> where A: ToTargetAddr {
+    pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize>
+        where A: ToTargetAddr
+    {
         let addr = try!(addr.to_target_addr());
 
         let mut packet = vec![];
