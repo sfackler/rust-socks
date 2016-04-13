@@ -9,5 +9,5 @@ documentation = "https://sfackler.github.io/rust-socks/doc/v0.2.0/socks"
 readme = "README.md"
 
 [dependencies]
-byteorder = "0.4"
+byteorder = "0.5"
 net2 = "0.2.21"
