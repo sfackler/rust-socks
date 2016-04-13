@@ -2,6 +2,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
+use net2::UdpSocketExt;
 
 use {ToTargetAddr, TargetAddr};
 
@@ -40,10 +41,7 @@ fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddr> {
     match try!(socket.read_u8()) {
         0 => {}
         1 => return Err(io::Error::new(io::ErrorKind::Other, "general SOCKS server failure")),
-        2 => {
-            return Err(io::Error::new(io::ErrorKind::Other,
-                                      "connection not allowed by ruleset"))
-        }
+        2 => return Err(io::Error::new(io::ErrorKind::Other, "connection not allowed by ruleset")),
         3 => return Err(io::Error::new(io::ErrorKind::Other, "network unreachable")),
         4 => return Err(io::Error::new(io::ErrorKind::Other, "host unreachable")),
         5 => return Err(io::Error::new(io::ErrorKind::Other, "connection refused")),
@@ -159,7 +157,7 @@ impl Socks5Stream {
         &mut self.socket
     }
 
-    /// Consumes the `Socks4Stream`, returning the inner `TcpStream`.
+    /// Consumes the `Socks5Stream`, returning the inner `TcpStream`.
     pub fn into_inner(self) -> TcpStream {
         self.socket
     }
@@ -244,7 +242,7 @@ impl Socks5Datagram {
     /// traffic routed through the specified proxy.
     pub fn bind<T, U>(proxy: T, addr: U) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
-              U: ToSocketAddrs,
+              U: ToSocketAddrs
     {
         // we don't know what our IP is from the perspective of the proxy, so
         // don't try to pass `addr` in here.
@@ -252,10 +250,11 @@ impl Socks5Datagram {
         let stream = try!(Socks5Stream::connect_raw(3, proxy, dst));
 
         let socket = try!(UdpSocket::bind(addr));
+        try!(socket.connect(stream.proxy_addr));
 
         Ok(Socks5Datagram {
             socket: socket,
-            stream: stream
+            stream: stream,
         })
     }
 
@@ -266,7 +265,9 @@ impl Socks5Datagram {
     /// The SOCKS protocol inserts a header at the beginning of the message. The
     /// header will be 10 bytes for an IPv4 address, 22 bytes for an IPv6
     /// address, and 7 bytes plus the length of the domain for a domain address.
-    pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize> where A: ToTargetAddr {
+    pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize>
+        where A: ToTargetAddr
+    {
         let addr = try!(addr.to_target_addr());
 
         let mut packet = vec![];
@@ -275,13 +276,13 @@ impl Socks5Datagram {
         try!(write_addr(&mut packet, &addr));
         let _ = packet.write_all(buf);
 
-        self.socket.send_to(&packet, self.stream.proxy_addr)
+        self.socket.send(&packet)
     }
 
     /// Like `UdpSocket::recv_from`.
     pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = try!(self.socket.recv_from(&mut inner_buf)).0;
+        let len = try!(self.socket.recv(&mut inner_buf));
 
         let mut inner_buf = &inner_buf[..len];
         if try!(inner_buf.read_u16::<BigEndian>()) != 0 {

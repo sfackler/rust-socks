@@ -1,8 +1,9 @@
 //! SOCKS proxy clients
-#![doc(html_root_url="https://sfackler.github.io/rust-socks/doc/v0.2.0")]
+#![doc(html_root_url="https://sfackler.github.io/rust-socks/doc/v0.2.1")]
 #![warn(missing_docs)]
 
 extern crate byteorder;
+extern crate net2;
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
