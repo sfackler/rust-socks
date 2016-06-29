@@ -28,7 +28,7 @@ pub enum TargetAddr {
 
 /// A trait for objects that can be converted to `TargetAddr`.
 pub trait ToTargetAddr {
-    /// Converts the value of `self` to a a `TargetAddr`.
+    /// Converts the value of `self` to a `TargetAddr`.
     fn to_target_addr(&self) -> io::Result<TargetAddr>;
 }
 
