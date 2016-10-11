@@ -10,4 +10,3 @@ readme = "README.md"
 
 [dependencies]
 byteorder = "0.5"
-net2 = "0.2.21"
