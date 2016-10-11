@@ -1,9 +1,8 @@
 //! SOCKS proxy clients
-#![doc(html_root_url="https://sfackler.github.io/rust-socks/doc/v0.2.1")]
+#![doc(html_root_url="https://sfackler.github.io/rust-socks/doc/v0.2.2")]
 #![warn(missing_docs)]
 
 extern crate byteorder;
-extern crate net2;
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -28,7 +27,7 @@ pub enum TargetAddr {
 
 /// A trait for objects that can be converted to `TargetAddr`.
 pub trait ToTargetAddr {
-    /// Converts the value of `self` to a a `TargetAddr`.
+    /// Converts the value of `self` to a `TargetAddr`.
     fn to_target_addr(&self) -> io::Result<TargetAddr>;
 }
 
