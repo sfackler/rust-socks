@@ -33,7 +33,7 @@ impl ToSocketAddrs for TargetAddr {
         let inner = match *self {
             TargetAddr::Ip(addr) => IterInner::Ip(Some(addr)),
             TargetAddr::Domain(ref domain, port) => {
-                let it = try!((&**domain, port).to_socket_addrs());
+                let it = (&**domain, port).to_socket_addrs()?;
                 IterInner::Domain(it)
             }
         };

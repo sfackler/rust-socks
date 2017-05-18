@@ -8,31 +8,26 @@ use {ToTargetAddr, TargetAddr};
 const MAX_ADDR_LEN: usize = 260;
 
 fn read_addr<R: Read>(socket: &mut R) -> io::Result<TargetAddr> {
-    match try!(socket.read_u8()) {
+    match socket.read_u8()? {
         1 => {
-            let ip = Ipv4Addr::from(try!(socket.read_u32::<BigEndian>()));
-            let port = try!(socket.read_u16::<BigEndian>());
+            let ip = Ipv4Addr::from(socket.read_u32::<BigEndian>()?);
+            let port = socket.read_u16::<BigEndian>()?;
             Ok(TargetAddr::Ip(SocketAddr::V4(SocketAddrV4::new(ip, port))))
         }
         3 => {
-            let len = try!(socket.read_u8());
+            let len = socket.read_u8()?;
             let mut domain = vec![0; len as usize];
-            try!(socket.read_exact(&mut domain));
-            let domain = try!(String::from_utf8(domain)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)));
-            let port = try!(socket.read_u16::<BigEndian>());
+            socket.read_exact(&mut domain)?;
+            let domain = String::from_utf8(domain)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            let port = socket.read_u16::<BigEndian>()?;
             Ok(TargetAddr::Domain(domain, port))
         }
         4 => {
-            let ip = Ipv6Addr::new(try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()),
-                                   try!(socket.read_u16::<BigEndian>()));
-            let port = try!(socket.read_u16::<BigEndian>());
+            let mut ip = [0; 16];
+            socket.read_exact(&mut ip)?;
+            let ip = Ipv6Addr::from(ip);
+            let port = socket.read_u16::<BigEndian>()?;
             Ok(TargetAddr::Ip(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0))))
         }
         _ => Err(io::Error::new(io::ErrorKind::Other, "unsupported address type")),
@@ -42,11 +37,11 @@ fn read_addr<R: Read>(socket: &mut R) -> io::Result<TargetAddr> {
 fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
     let mut socket = BufReader::with_capacity(MAX_ADDR_LEN + 3, socket);
 
-    if try!(socket.read_u8()) != 5 {
+    if socket.read_u8()? != 5 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
     }
 
-    match try!(socket.read_u8()) {
+    match socket.read_u8()? {
         0 => {}
         1 => return Err(io::Error::new(io::ErrorKind::Other, "general SOCKS server failure")),
         2 => return Err(io::Error::new(io::ErrorKind::Other, "connection not allowed by ruleset")),
@@ -59,7 +54,7 @@ fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
         _ => return Err(io::Error::new(io::ErrorKind::Other, "unknown error")),
     }
 
-    if try!(socket.read_u8()) != 0 {
+    if socket.read_u8()? != 0 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved byte"));
     }
 
@@ -114,21 +109,21 @@ impl Socks5Stream {
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        let mut socket = try!(TcpStream::connect(proxy));
+        let mut socket = TcpStream::connect(proxy)?;
 
-        let target = try!(target.to_target_addr());
+        let target = target.to_target_addr()?;
 
         let mut packet = vec![];
         let _ = packet.write_u8(5); // protocol version
         let _ = packet.write_u8(1); // method count
         let _ = packet.write_u8(0); // no authentication
-        try!(socket.write_all(&packet));
+        socket.write_all(&packet)?;
 
-        if try!(socket.read_u8()) != 5 {
+        if socket.read_u8()? != 5 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
         }
 
-        match try!(socket.read_u8()) {
+        match socket.read_u8()? {
             0 => {}
             0xff => return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods")),
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown auth method")),
@@ -138,10 +133,10 @@ impl Socks5Stream {
         let _ = packet.write_u8(5); // protocol version
         let _ = packet.write_u8(command); // command
         let _ = packet.write_u8(0); // reserved
-        try!(write_addr(&mut packet, &target));
-        try!(socket.write_all(&packet));
+        write_addr(&mut packet, &target)?;
+        socket.write_all(&packet)?;
 
-        let proxy_addr = try!(read_response(&mut socket));
+        let proxy_addr = read_response(&mut socket)?;
 
         Ok(Socks5Stream {
             socket: socket,
@@ -232,7 +227,7 @@ impl Socks5Listener {
     /// The value of `proxy_addr` should be forwarded to the remote process
     /// before this method is called.
     pub fn accept(mut self) -> io::Result<Socks5Stream> {
-        self.0.proxy_addr = try!(read_response(&mut self.0.socket));
+        self.0.proxy_addr = read_response(&mut self.0.socket)?;
         Ok(self.0)
     }
 }
@@ -255,10 +250,10 @@ impl Socks5Datagram {
         // we don't know what our IP is from the perspective of the proxy, so
         // don't try to pass `addr` in here.
         let dst = TargetAddr::Ip(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
-        let stream = try!(Socks5Stream::connect_raw(3, proxy, dst));
+        let stream = Socks5Stream::connect_raw(3, proxy, dst)?;
 
-        let socket = try!(UdpSocket::bind(addr));
-        try!(socket.connect(&stream.proxy_addr));
+        let socket = UdpSocket::bind(addr)?;
+        socket.connect(&stream.proxy_addr)?;
 
         Ok(Socks5Datagram {
             socket: socket,
@@ -276,12 +271,12 @@ impl Socks5Datagram {
     pub fn send_to<A>(&self, buf: &[u8], addr: A) -> io::Result<usize>
         where A: ToTargetAddr
     {
-        let addr = try!(addr.to_target_addr());
+        let addr = addr.to_target_addr()?;
 
         let mut packet = vec![];
         let _ = packet.write_u16::<BigEndian>(0); // reserved
         let _ = packet.write_u8(0); // fragment
-        try!(write_addr(&mut packet, &addr));
+        write_addr(&mut packet, &addr)?;
         let _ = packet.write_all(buf);
 
         self.socket.send(&packet)
@@ -290,16 +285,16 @@ impl Socks5Datagram {
     /// Like `UdpSocket::recv_from`.
     pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
         let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = try!(self.socket.recv(&mut inner_buf));
+        let len = self.socket.recv(&mut inner_buf)?;
 
         let mut inner_buf = &inner_buf[..len];
-        if try!(inner_buf.read_u16::<BigEndian>()) != 0 {
+        if inner_buf.read_u16::<BigEndian>()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved bytes"));
         }
-        if try!(inner_buf.read_u8()) != 0 {
+        if inner_buf.read_u8()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid fragment id"));
         }
-        let addr = try!(read_addr(&mut inner_buf));
+        let addr = read_addr(&mut inner_buf)?;
 
         buf.write(inner_buf).map(|l| (l, addr))
     }

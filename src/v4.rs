@@ -6,14 +6,14 @@ use {ToTargetAddr, TargetAddr};
 
 fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
     let mut response = [0u8; 8];
-    try!(socket.read_exact(&mut response));
+    socket.read_exact(&mut response)?;
     let mut response = &response[..];
 
-    if try!(response.read_u8()) != 0 {
+    if response.read_u8()? != 0 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
     }
 
-    match try!(response.read_u8()) {
+    match response.read_u8()? {
         90 => {}
         91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
         92 => {
@@ -29,8 +29,8 @@ fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
     }
 
-    let port = try!(response.read_u16::<BigEndian>());
-    let ip = Ipv4Addr::from(try!(response.read_u32::<BigEndian>()));
+    let port = response.read_u16::<BigEndian>()?;
+    let ip = Ipv4Addr::from(response.read_u32::<BigEndian>()?);
 
     Ok(SocketAddrV4::new(ip, port))
 }
@@ -62,14 +62,14 @@ impl Socks4Stream {
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        let mut socket = try!(TcpStream::connect(proxy));
+        let mut socket = TcpStream::connect(proxy)?;
 
-        let target = try!(target.to_target_addr());
+        let target = target.to_target_addr()?;
 
         let mut packet = vec![];
         let _ = packet.write_u8(4); // version
         let _ = packet.write_u8(command); // command code
-        match try!(target.to_target_addr()) {
+        match target.to_target_addr()? {
             TargetAddr::Ip(addr) => {
                 let addr = match addr {
                     SocketAddr::V4(addr) => addr,
@@ -93,8 +93,8 @@ impl Socks4Stream {
             }
         }
 
-        try!(socket.write_all(&packet));
-        let proxy_addr = try!(read_response(&mut socket));
+        socket.write_all(&packet)?;
+        let proxy_addr = read_response(&mut socket)?;
 
         Ok(Socks4Stream {
             socket: socket,
@@ -181,7 +181,7 @@ impl Socks4Listener {
             Ok(SocketAddr::V4(self.0.proxy_addr()))
         } else {
             let port = self.0.proxy_addr.port();
-            let peer = match try!(self.0.socket.peer_addr()) {
+            let peer = match self.0.socket.peer_addr()? {
                 SocketAddr::V4(addr) => SocketAddr::V4(SocketAddrV4::new(*addr.ip(), port)),
                 SocketAddr::V6(addr) => SocketAddr::V6(SocketAddrV6::new(*addr.ip(), port, 0, 0)),
             };
@@ -194,7 +194,7 @@ impl Socks4Listener {
     /// The value of `proxy_addr` should be forwarded to the remote process
     /// before this method is called.
     pub fn accept(mut self) -> io::Result<Socks4Stream> {
-        self.0.proxy_addr = try!(read_response(&mut self.0.socket));
+        self.0.proxy_addr = read_response(&mut self.0.socket)?;
         Ok(self.0)
     }
 }
