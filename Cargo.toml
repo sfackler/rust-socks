@@ -1,11 +1,11 @@
 [package]
 name = "socks"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "SOCKS proxy clients"
 repository = "https://github.com/sfackler/rust-socks"
-documentation = "https://docs.rs/socks/0.2.3/socks"
+documentation = "https://docs.rs/socks/0.3.0/socks"
 readme = "README.md"
 
 [dependencies]

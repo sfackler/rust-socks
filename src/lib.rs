@@ -1,5 +1,5 @@
 //! SOCKS proxy clients
-#![doc(html_root_url="https://docs.rs/socks/0.2.3")]
+#![doc(html_root_url="https://docs.rs/socks/0.3.0")]
 #![warn(missing_docs)]
 
 extern crate byteorder;
