@@ -11,3 +11,5 @@ before_script:
 - $HOME/dante/sbin/sockd -D -f $PWD/.travis/sockd.conf
 script:
 - cargo test
+after_script:
+- killall sockd
