@@ -12,4 +12,4 @@ before_script:
 script:
 - cargo test
 after_script:
-- killall sockd
+- killall sockd sshd
