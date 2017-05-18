@@ -7,12 +7,21 @@ use {ToTargetAddr, TargetAddr};
 
 const MAX_ADDR_LEN: usize = 260;
 
-fn read_addr<R: Read>(socket: &mut R) -> io::Result<SocketAddr> {
+fn read_addr<R: Read>(socket: &mut R) -> io::Result<TargetAddr> {
     match try!(socket.read_u8()) {
         1 => {
             let ip = Ipv4Addr::from(try!(socket.read_u32::<BigEndian>()));
             let port = try!(socket.read_u16::<BigEndian>());
-            Ok(SocketAddr::V4(SocketAddrV4::new(ip, port)))
+            Ok(TargetAddr::Ip(SocketAddr::V4(SocketAddrV4::new(ip, port))))
+        }
+        3 => {
+            let len = try!(socket.read_u8());
+            let mut domain = vec![0; len as usize];
+            try!(socket.read_exact(&mut domain));
+            let domain = try!(String::from_utf8(domain)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)));
+            let port = try!(socket.read_u16::<BigEndian>());
+            Ok(TargetAddr::Domain(domain, port))
         }
         4 => {
             let ip = Ipv6Addr::new(try!(socket.read_u16::<BigEndian>()),
@@ -24,13 +33,13 @@ fn read_addr<R: Read>(socket: &mut R) -> io::Result<SocketAddr> {
                                    try!(socket.read_u16::<BigEndian>()),
                                    try!(socket.read_u16::<BigEndian>()));
             let port = try!(socket.read_u16::<BigEndian>());
-            Ok(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0)))
+            Ok(TargetAddr::Ip(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, 0))))
         }
         _ => Err(io::Error::new(io::ErrorKind::Other, "unsupported address type")),
     }
 }
 
-fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddr> {
+fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
     let mut socket = BufReader::with_capacity(MAX_ADDR_LEN + 3, socket);
 
     if try!(socket.read_u8()) != 5 {
@@ -89,7 +98,7 @@ fn write_addr(packet: &mut Vec<u8>, target: &TargetAddr) -> io::Result<()> {
 #[derive(Debug)]
 pub struct Socks5Stream {
     socket: TcpStream,
-    proxy_addr: SocketAddr,
+    proxy_addr: TargetAddr,
 }
 
 impl Socks5Stream {
@@ -142,8 +151,8 @@ impl Socks5Stream {
 
     /// Returns the proxy-side address of the connection between the proxy and
     /// target server.
-    pub fn proxy_addr(&self) -> SocketAddr {
-        self.proxy_addr
+    pub fn proxy_addr(&self) -> &TargetAddr {
+        &self.proxy_addr
     }
 
     /// Returns a shared reference to the inner `TcpStream`.
@@ -214,8 +223,8 @@ impl Socks5Listener {
     ///
     /// This should be forwarded to the remote process, which should open a
     /// connection to it.
-    pub fn proxy_addr(&self) -> SocketAddr {
-        self.0.proxy_addr
+    pub fn proxy_addr(&self) -> &TargetAddr {
+        &self.0.proxy_addr
     }
 
     /// Waits for the remote process to connect to the proxy server.
@@ -249,7 +258,7 @@ impl Socks5Datagram {
         let stream = try!(Socks5Stream::connect_raw(3, proxy, dst));
 
         let socket = try!(UdpSocket::bind(addr));
-        try!(socket.connect(stream.proxy_addr));
+        try!(socket.connect(&stream.proxy_addr));
 
         Ok(Socks5Datagram {
             socket: socket,
@@ -279,7 +288,7 @@ impl Socks5Datagram {
     }
 
     /// Like `UdpSocket::recv_from`.
-    pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+    pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
         let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
         let len = try!(self.socket.recv(&mut inner_buf));
 
@@ -297,8 +306,8 @@ impl Socks5Datagram {
 
     /// Returns the address of the proxy-side UDP socket through which all
     /// messages will be routed.
-    pub fn proxy_addr(&self) -> SocketAddr {
-        self.stream.proxy_addr
+    pub fn proxy_addr(&self) -> &TargetAddr {
+        &self.stream.proxy_addr
     }
 
     /// Returns a shared reference to the inner socket.
@@ -350,10 +359,10 @@ mod test {
     fn bind() {
         // First figure out our local address that we'll be connecting from
         let socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
-        let addr = socket.proxy_addr();
+        let addr = socket.proxy_addr().clone();
 
         let listener = Socks5Listener::bind("127.0.0.1:1080", addr).unwrap();
-        let addr = listener.proxy_addr();
+        let addr = listener.proxy_addr().clone();
         let mut end = TcpStream::connect(addr).unwrap();
         let mut conn = listener.accept().unwrap();
         conn.write_all(b"hello world").unwrap();

@@ -5,7 +5,8 @@
 extern crate byteorder;
 
 use std::io;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
+use std::vec;
 
 pub use v4::{Socks4Stream, Socks4Listener};
 pub use v5::{Socks5Stream, Socks5Listener, Socks5Datagram};
@@ -23,6 +24,40 @@ pub enum TargetAddr {
     /// The domain name will be passed along to the proxy server and DNS lookup
     /// will happen there.
     Domain(String, u16),
+}
+
+impl ToSocketAddrs for TargetAddr {
+    type Iter = Iter;
+
+    fn to_socket_addrs(&self) -> io::Result<Iter> {
+        let inner = match *self {
+            TargetAddr::Ip(addr) => IterInner::Ip(Some(addr)),
+            TargetAddr::Domain(ref domain, port) => {
+                let it = try!((&**domain, port).to_socket_addrs());
+                IterInner::Domain(it)
+            }
+        };
+        Ok(Iter(inner))
+    }
+}
+
+enum IterInner {
+    Ip(Option<SocketAddr>),
+    Domain(vec::IntoIter<SocketAddr>),
+}
+
+/// An iterator over `SocketAddr`s associated with a `TargetAddr`.
+pub struct Iter(IterInner);
+
+impl Iterator for Iter {
+    type Item = SocketAddr;
+
+    fn next(&mut self) -> Option<SocketAddr> {
+        match self.0 {
+            IterInner::Ip(ref mut addr) => addr.take(),
+            IterInner::Domain(ref mut it) => it.next(),
+        }
+    }
 }
 
 /// A trait for objects that can be converted to `TargetAddr`.
