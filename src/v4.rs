@@ -234,8 +234,8 @@ mod test {
     }
 
     #[test]
+    #[ignore] // dante doesn't support SOCKS4A
     fn google_dns() {
-        // dante doesn't support SOCKS4A
         let mut socket = Socks4Stream::connect("127.0.0.1:8080", "google.com:80", "").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
