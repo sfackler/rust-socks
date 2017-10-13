@@ -4,6 +4,7 @@ use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream,
                Ipv6Addr, UdpSocket};
 
 use {ToTargetAddr, TargetAddr};
+use writev::WritevExt;
 
 const MAX_ADDR_LEN: usize = 260;
 
@@ -61,32 +62,31 @@ fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
     read_addr(&mut socket)
 }
 
-fn write_addr(packet: &mut Vec<u8>, target: &TargetAddr) -> io::Result<()> {
+fn write_addr(mut packet: &mut [u8], target: &TargetAddr) -> io::Result<usize> {
+    let start_len = packet.len();
     match *target {
         TargetAddr::Ip(SocketAddr::V4(addr)) => {
-            let _ = packet.write_u8(1);
-            let _ = packet.write_u32::<BigEndian>((*addr.ip()).into());
-            let _ = packet.write_u16::<BigEndian>(addr.port());
+            packet.write_u8(1).unwrap();
+            packet.write_u32::<BigEndian>((*addr.ip()).into()).unwrap();
+            packet.write_u16::<BigEndian>(addr.port()).unwrap();
         }
         TargetAddr::Ip(SocketAddr::V6(addr)) => {
-            let _ = packet.write_u8(4);
-            for &part in &addr.ip().segments()[..] {
-                let _ = packet.write_u16::<BigEndian>(part);
-            }
-            let _ = packet.write_u16::<BigEndian>(addr.port());
+            packet.write_u8(4).unwrap();
+            packet.write_all(&addr.ip().octets()).unwrap();
+            packet.write_u16::<BigEndian>(addr.port()).unwrap();
         }
         TargetAddr::Domain(ref domain, port) => {
-            let _ = packet.write_u8(3);
+            packet.write_u8(3).unwrap();
             if domain.len() > u8::max_value() as usize {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, "domain name too long"));
             }
-            let _ = packet.write_u8(domain.len() as u8);
-            let _ = packet.write_all(domain.as_bytes());
-            let _ = packet.write_u16::<BigEndian>(port);
+            packet.write_u8(domain.len() as u8).unwrap();
+            packet.write_all(domain.as_bytes()).unwrap();
+            packet.write_u16::<BigEndian>(port).unwrap();
         }
     }
 
-    Ok(())
+    Ok(start_len - packet.len())
 }
 
 /// A SOCKS5 client.
@@ -113,10 +113,11 @@ impl Socks5Stream {
 
         let target = target.to_target_addr()?;
 
-        let mut packet = vec![];
-        let _ = packet.write_u8(5); // protocol version
-        let _ = packet.write_u8(1); // method count
-        let _ = packet.write_u8(0); // no authentication
+        let packet = [
+            5, // protocol version
+            1, // method count
+            0, // no authentication
+        ];
         socket.write_all(&packet)?;
 
         if socket.read_u8()? != 5 {
@@ -129,12 +130,12 @@ impl Socks5Stream {
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown auth method")),
         }
 
-        packet.clear();
-        let _ = packet.write_u8(5); // protocol version
-        let _ = packet.write_u8(command); // command
-        let _ = packet.write_u8(0); // reserved
-        write_addr(&mut packet, &target)?;
-        socket.write_all(&packet)?;
+        let mut packet = [0; MAX_ADDR_LEN + 3];
+        packet[0] = 5; // protocol version
+        packet[1] = command; // command
+        packet[2] = 0; // reserved
+        let len = write_addr(&mut packet[3..], &target)?;
+        socket.write_all(&packet[..len + 3])?;
 
         let proxy_addr = read_response(&mut socket)?;
 
@@ -273,13 +274,12 @@ impl Socks5Datagram {
     {
         let addr = addr.to_target_addr()?;
 
-        let mut packet = vec![];
-        let _ = packet.write_u16::<BigEndian>(0); // reserved
-        let _ = packet.write_u8(0); // fragment
-        write_addr(&mut packet, &addr)?;
-        let _ = packet.write_all(buf);
+        let mut header = [0; MAX_ADDR_LEN + 3];
+        // first two bytes are reserved at 0
+        // third byte is the fragment id at 0
+        let len = write_addr(&mut header[3..], &addr)?;
 
-        self.socket.send(&packet)
+        self.socket.writev(&[&header[..len + 3], buf])
     }
 
     /// Like `UdpSocket::recv_from`.
