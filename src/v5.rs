@@ -1,7 +1,9 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+use std::cmp;
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
+use std::ptr;
 
 use {ToTargetAddr, TargetAddr};
 use writev::WritevExt;
@@ -120,11 +122,14 @@ impl Socks5Stream {
         ];
         socket.write_all(&packet)?;
 
-        if socket.read_u8()? != 5 {
+        let mut buf = [0; 2];
+        socket.read_exact(&mut buf)?;
+
+        if buf[0] != 5 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
         }
 
-        match socket.read_u8()? {
+        match buf[1] {
             0 => {}
             0xff => return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods")),
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown auth method")),
@@ -279,24 +284,33 @@ impl Socks5Datagram {
         // third byte is the fragment id at 0
         let len = write_addr(&mut header[3..], &addr)?;
 
-        self.socket.writev(&[&header[..len + 3], buf])
+        self.socket.writev([&header[..len + 3], buf])
     }
 
     /// Like `UdpSocket::recv_from`.
-    pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
-        let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = self.socket.recv(&mut inner_buf)?;
+    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
+        let mut header = [0; MAX_ADDR_LEN + 3];
+        let len = self.socket.readv([&mut header, buf])?;
 
-        let mut inner_buf = &inner_buf[..len];
-        if inner_buf.read_u16::<BigEndian>()? != 0 {
+        let overflow = len.saturating_sub(header.len());
+
+        let header_len = cmp::min(header.len(), len);
+        let mut header = &mut &header[..header_len];
+
+        if header.read_u16::<BigEndian>()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved bytes"));
         }
-        if inner_buf.read_u8()? != 0 {
+        if header.read_u8()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid fragment id"));
         }
-        let addr = read_addr(&mut inner_buf)?;
+        let addr = read_addr(&mut header)?;
 
-        buf.write(inner_buf).map(|l| (l, addr))
+        unsafe {
+            ptr::copy(buf.as_ptr(), buf.as_mut_ptr().offset(header.len() as isize), overflow);
+        }
+        buf[..header.len()].copy_from_slice(header);
+
+        Ok((header.len() + overflow, addr))
     }
 
     /// Returns the address of the proxy-side UDP socket through which all
@@ -384,5 +398,30 @@ mod test {
         let len = socks.recv_from(&mut buf).unwrap().0;
         assert_eq!(len, 12);
         assert_eq!(&buf[..12], b"hello world!");
+    }
+
+    #[test]
+    fn associate_long() {
+        let socks = Socks5Datagram::bind("127.0.0.1:1080", "127.0.0.1:15412").unwrap();
+        let socket_addr = "127.0.0.1:15413";
+        let socket = UdpSocket::bind(socket_addr).unwrap();
+
+        let mut msg = vec![];
+        for i in 0..(MAX_ADDR_LEN + 100) {
+            msg.push(i as u8);
+        }
+
+        socks.send_to(&msg, socket_addr).unwrap();
+        let mut buf = vec![0; msg.len() + 1];
+        let (len, addr) = socket.recv_from(&mut buf).unwrap();
+        assert_eq!(len, msg.len());
+        assert_eq!(msg, &buf[..msg.len()]);
+
+        socket.send_to(&msg, addr).unwrap();
+
+        let mut buf = vec![0; msg.len() + 1];
+        let len = socks.recv_from(&mut buf).unwrap().0;
+        assert_eq!(len, msg.len());
+        assert_eq!(msg, &buf[..msg.len()]);
     }
 }
