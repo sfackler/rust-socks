@@ -111,12 +111,13 @@ mod imp {
                     },
                 ];
                 let mut recved = 0;
+                let mut flags = 0;
                 let r = ws2_32::WSARecv(
                     self.as_raw_socket(),
                     wsabufs.as_mut_ptr(),
                     bufs.len() as winapi::DWORD,
                     &mut recved,
-                    0,
+                    &mut flags,
                     ptr::null_mut(),
                     None,
                 );
