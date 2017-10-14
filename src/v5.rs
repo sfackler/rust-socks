@@ -2,6 +2,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
+use std::sync::Arc;
 
 use {ToTargetAddr, TargetAddr};
 
@@ -237,7 +238,7 @@ impl Socks5Listener {
 pub struct Socks5Datagram {
     socket: UdpSocket,
     // keeps the session alive
-    stream: Socks5Stream,
+    stream: Arc<Socks5Stream>,
 }
 
 impl Socks5Datagram {
@@ -257,7 +258,7 @@ impl Socks5Datagram {
 
         Ok(Socks5Datagram {
             socket: socket,
-            stream: stream,
+            stream: Arc::new(stream),
         })
     }
 
@@ -314,6 +315,17 @@ impl Socks5Datagram {
     pub fn get_mut(&mut self) -> &mut UdpSocket {
         &mut self.socket
     }
+
+    /// Creates a new independently owned handle.
+    pub fn try_clone(&self) -> io::Result<Socks5Datagram> {
+        let socket = try!(self.socket.try_clone());
+        let stream = self.stream.clone();
+        Ok(Socks5Datagram {
+            socket: socket,
+            stream: stream,
+        })
+    }
+
 }
 
 #[cfg(test)]
