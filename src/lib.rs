@@ -4,6 +4,13 @@
 
 extern crate byteorder;
 
+#[cfg(unix)]
+extern crate libc;
+#[cfg(windows)]
+extern crate winapi;
+#[cfg(windows)]
+extern crate ws2_32;
+
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::vec;
@@ -13,6 +20,7 @@ pub use v5::{Socks5Stream, Socks5Listener, Socks5Datagram};
 
 mod v4;
 mod v5;
+mod writev;
 
 /// A description of a connection target.
 #[derive(Debug, Clone)]

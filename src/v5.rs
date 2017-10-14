@@ -1,9 +1,12 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+use std::cmp;
 use std::io::{self, Read, Write, BufReader};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
+use std::ptr;
 
 use {ToTargetAddr, TargetAddr};
+use writev::WritevExt;
 
 const MAX_ADDR_LEN: usize = 260;
 
@@ -61,32 +64,31 @@ fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
     read_addr(&mut socket)
 }
 
-fn write_addr(packet: &mut Vec<u8>, target: &TargetAddr) -> io::Result<()> {
+fn write_addr(mut packet: &mut [u8], target: &TargetAddr) -> io::Result<usize> {
+    let start_len = packet.len();
     match *target {
         TargetAddr::Ip(SocketAddr::V4(addr)) => {
-            let _ = packet.write_u8(1);
-            let _ = packet.write_u32::<BigEndian>((*addr.ip()).into());
-            let _ = packet.write_u16::<BigEndian>(addr.port());
+            packet.write_u8(1).unwrap();
+            packet.write_u32::<BigEndian>((*addr.ip()).into()).unwrap();
+            packet.write_u16::<BigEndian>(addr.port()).unwrap();
         }
         TargetAddr::Ip(SocketAddr::V6(addr)) => {
-            let _ = packet.write_u8(4);
-            for &part in &addr.ip().segments()[..] {
-                let _ = packet.write_u16::<BigEndian>(part);
-            }
-            let _ = packet.write_u16::<BigEndian>(addr.port());
+            packet.write_u8(4).unwrap();
+            packet.write_all(&addr.ip().octets()).unwrap();
+            packet.write_u16::<BigEndian>(addr.port()).unwrap();
         }
         TargetAddr::Domain(ref domain, port) => {
-            let _ = packet.write_u8(3);
+            packet.write_u8(3).unwrap();
             if domain.len() > u8::max_value() as usize {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, "domain name too long"));
             }
-            let _ = packet.write_u8(domain.len() as u8);
-            let _ = packet.write_all(domain.as_bytes());
-            let _ = packet.write_u16::<BigEndian>(port);
+            packet.write_u8(domain.len() as u8).unwrap();
+            packet.write_all(domain.as_bytes()).unwrap();
+            packet.write_u16::<BigEndian>(port).unwrap();
         }
     }
 
-    Ok(())
+    Ok(start_len - packet.len())
 }
 
 /// A SOCKS5 client.
@@ -113,28 +115,32 @@ impl Socks5Stream {
 
         let target = target.to_target_addr()?;
 
-        let mut packet = vec![];
-        let _ = packet.write_u8(5); // protocol version
-        let _ = packet.write_u8(1); // method count
-        let _ = packet.write_u8(0); // no authentication
+        let packet = [
+            5, // protocol version
+            1, // method count
+            0, // no authentication
+        ];
         socket.write_all(&packet)?;
 
-        if socket.read_u8()? != 5 {
+        let mut buf = [0; 2];
+        socket.read_exact(&mut buf)?;
+
+        if buf[0] != 5 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
         }
 
-        match socket.read_u8()? {
+        match buf[1] {
             0 => {}
             0xff => return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods")),
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown auth method")),
         }
 
-        packet.clear();
-        let _ = packet.write_u8(5); // protocol version
-        let _ = packet.write_u8(command); // command
-        let _ = packet.write_u8(0); // reserved
-        write_addr(&mut packet, &target)?;
-        socket.write_all(&packet)?;
+        let mut packet = [0; MAX_ADDR_LEN + 3];
+        packet[0] = 5; // protocol version
+        packet[1] = command; // command
+        packet[2] = 0; // reserved
+        let len = write_addr(&mut packet[3..], &target)?;
+        socket.write_all(&packet[..len + 3])?;
 
         let proxy_addr = read_response(&mut socket)?;
 
@@ -273,30 +279,38 @@ impl Socks5Datagram {
     {
         let addr = addr.to_target_addr()?;
 
-        let mut packet = vec![];
-        let _ = packet.write_u16::<BigEndian>(0); // reserved
-        let _ = packet.write_u8(0); // fragment
-        write_addr(&mut packet, &addr)?;
-        let _ = packet.write_all(buf);
+        let mut header = [0; MAX_ADDR_LEN + 3];
+        // first two bytes are reserved at 0
+        // third byte is the fragment id at 0
+        let len = write_addr(&mut header[3..], &addr)?;
 
-        self.socket.send(&packet)
+        self.socket.writev([&header[..len + 3], buf])
     }
 
     /// Like `UdpSocket::recv_from`.
-    pub fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
-        let mut inner_buf = vec![0; buf.len() + MAX_ADDR_LEN + 3];
-        let len = self.socket.recv(&mut inner_buf)?;
+    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, TargetAddr)> {
+        let mut header = [0; MAX_ADDR_LEN + 3];
+        let len = self.socket.readv([&mut header, buf])?;
 
-        let mut inner_buf = &inner_buf[..len];
-        if inner_buf.read_u16::<BigEndian>()? != 0 {
+        let overflow = len.saturating_sub(header.len());
+
+        let header_len = cmp::min(header.len(), len);
+        let mut header = &mut &header[..header_len];
+
+        if header.read_u16::<BigEndian>()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved bytes"));
         }
-        if inner_buf.read_u8()? != 0 {
+        if header.read_u8()? != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid fragment id"));
         }
-        let addr = read_addr(&mut inner_buf)?;
+        let addr = read_addr(&mut header)?;
 
-        buf.write(inner_buf).map(|l| (l, addr))
+        unsafe {
+            ptr::copy(buf.as_ptr(), buf.as_mut_ptr().offset(header.len() as isize), overflow);
+        }
+        buf[..header.len()].copy_from_slice(header);
+
+        Ok((header.len() + overflow, addr))
     }
 
     /// Returns the address of the proxy-side UDP socket through which all
@@ -384,5 +398,30 @@ mod test {
         let len = socks.recv_from(&mut buf).unwrap().0;
         assert_eq!(len, 12);
         assert_eq!(&buf[..12], b"hello world!");
+    }
+
+    #[test]
+    fn associate_long() {
+        let socks = Socks5Datagram::bind("127.0.0.1:1080", "127.0.0.1:15412").unwrap();
+        let socket_addr = "127.0.0.1:15413";
+        let socket = UdpSocket::bind(socket_addr).unwrap();
+
+        let mut msg = vec![];
+        for i in 0..(MAX_ADDR_LEN + 100) {
+            msg.push(i as u8);
+        }
+
+        socks.send_to(&msg, socket_addr).unwrap();
+        let mut buf = vec![0; msg.len() + 1];
+        let (len, addr) = socket.recv_from(&mut buf).unwrap();
+        assert_eq!(len, msg.len());
+        assert_eq!(msg, &buf[..msg.len()]);
+
+        socket.send_to(&msg, addr).unwrap();
+
+        let mut buf = vec![0; msg.len() + 1];
+        let len = socks.recv_from(&mut buf).unwrap().0;
+        assert_eq!(len, msg.len());
+        assert_eq!(msg, &buf[..msg.len()]);
     }
 }
