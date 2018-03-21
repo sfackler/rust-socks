@@ -30,8 +30,9 @@ jobs:
       - checkout
       - run: apt-get update
       - run: apt-get install -y --no-install-recommends dante-server
-      - run: cp .circleci/danted.conf /etc
-      - run: danted -D
+      - run: danted -D -f .circleci/danted_no_auth.conf
+      - run: danted -D -f .circleci/danted_password.conf
+      - run: useradd testuser -p '$1$DLEVM6FQ$dNm6etLDprLfwWSLCUtQY/'  # password: testpass
       - *RESTORE_REGISTRY
       - run: cargo generate-lockfile
       - *SAVE_REGISTRY
