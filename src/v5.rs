@@ -105,6 +105,14 @@ impl<'a> Authentication<'a> {
             Authentication::None => 0
         }
     }
+
+    fn is_no_auth(&self) -> bool {
+        if let Authentication::None = *self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// A SOCKS5 client.
@@ -141,33 +149,37 @@ impl Socks5Stream {
 
         let target = target.to_target_addr()?;
 
+        let packet_len = if auth.is_no_auth() { 3 } else { 4 };
         let packet = [
             5, // protocol version
-            1, // method count
-            auth.id() // auth method
+            if auth.is_no_auth() { 1 } else { 2 }, // method count
+            auth.id(), // method
+            0, // no auth (always offered)
         ];
-        socket.write_all(&packet)?;
+        socket.write_all(&packet[..packet_len])?;
 
         let mut buf = [0; 2];
         socket.read_exact(&mut buf)?;
+        let response_version = buf[0];
+        let selected_method = buf[1];
 
-        if buf[0] != 5 {
+        if response_version != 5 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
         }
 
-        if buf[1] == 0xff {
+        if selected_method == 0xff {
             return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods"))
         }
 
-        if auth.id() != buf[1] {
+        if selected_method != auth.id() && selected_method != Authentication::None.id() {
             return Err(io::Error::new(io::ErrorKind::Other, "unknown auth method"))
         }
 
         match *auth {
-            Authentication::Password { username, password } => {
+            Authentication::Password { username, password } if selected_method == auth.id() => {
                 Self::password_authentication(&mut socket, username, password)?
             },
-            Authentication::None => ()
+            _ => ()
         }
 
         let mut packet = [0; MAX_ADDR_LEN + 3];
@@ -431,10 +443,13 @@ mod test {
 
     use super::*;
 
+    const SOCKS_PROXY_NO_AUTH_ONLY: &str = "127.0.0.1:1080";
+    const SOCKS_PROXY_PASSWD_ONLY: &str = "127.0.0.1:1081";
+
     #[test]
     fn google_no_auth() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
-        let socket = Socks5Stream::connect("127.0.0.1:1080", addr).unwrap();
+        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, addr).unwrap();
         google(socket);
     }
 
@@ -442,7 +457,7 @@ mod test {
     fn google_with_password() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
         let socket = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
             "testpass"
@@ -462,7 +477,7 @@ mod test {
 
     #[test]
     fn google_dns() {
-        let mut socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
+        let mut socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80").unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -476,7 +491,19 @@ mod test {
     #[test]
     fn bind_no_auth() {
         let addr = find_address();
-        let listener = Socks5Listener::bind("127.0.0.1:1080", addr).unwrap();
+        let listener = Socks5Listener::bind(SOCKS_PROXY_NO_AUTH_ONLY, addr).unwrap();
+        bind(listener);
+    }
+
+    #[test]
+    fn bind_with_password_supported_but_no_auth_used() {
+        let addr = find_address();
+        let listener = Socks5Listener::bind_with_password(
+            SOCKS_PROXY_NO_AUTH_ONLY,
+            addr,
+            "unused_and_invalid_username",
+            "unused_and_invalid_password"
+        ).unwrap();
         bind(listener);
     }
 
@@ -505,20 +532,20 @@ mod test {
 
     // First figure out our local address that we'll be connecting from
     fn find_address() -> TargetAddr {
-        let socket = Socks5Stream::connect("127.0.0.1:1080", "google.com:80").unwrap();
+        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80").unwrap();
         socket.proxy_addr().to_owned()
     }
 
     #[test]
     fn associate_no_auth() {
-        let socks = Socks5Datagram::bind("127.0.0.1:1080", "127.0.0.1:15410").unwrap();
+        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15410").unwrap();
         associate(socks, "127.0.0.1:15411");
     }
 
     #[test]
     fn associate_with_password() {
         let socks = Socks5Datagram::bind_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             "127.0.0.1:15414",
             "testuser",
             "testpass"
@@ -544,7 +571,7 @@ mod test {
 
     #[test]
     fn associate_long() {
-        let socks = Socks5Datagram::bind("127.0.0.1:1080", "127.0.0.1:15412").unwrap();
+        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15412").unwrap();
         let socket_addr = "127.0.0.1:15413";
         let socket = UdpSocket::bind(socket_addr).unwrap();
 
@@ -571,7 +598,7 @@ mod test {
     fn incorrect_password() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
             "invalid"
@@ -584,7 +611,7 @@ mod test {
     #[test]
     fn auth_method_not_supported() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
-        let err = Socks5Stream::connect("127.0.0.1:1081", addr).unwrap_err();
+        let err = Socks5Stream::connect(SOCKS_PROXY_PASSWD_ONLY, addr).unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::Other);
         assert_eq!(err.description(), "no acceptable auth methods");
@@ -595,7 +622,7 @@ mod test {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(1),
             &string_of_size(1)
@@ -604,7 +631,7 @@ mod test {
         assert_eq!(err.description(), "password authentication failed");
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
             &string_of_size(255)
@@ -613,7 +640,7 @@ mod test {
         assert_eq!(err.description(), "password authentication failed");
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(0),
             &string_of_size(255)
@@ -622,7 +649,7 @@ mod test {
         assert_eq!(err.description(), "invalid username");
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(256),
             &string_of_size(255)
@@ -631,7 +658,7 @@ mod test {
         assert_eq!(err.description(), "invalid username");
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
             &string_of_size(0)
@@ -640,7 +667,7 @@ mod test {
         assert_eq!(err.description(), "invalid password");
 
         let err = Socks5Stream::connect_with_password(
-            "127.0.0.1:1081",
+            SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
             &string_of_size(256)
