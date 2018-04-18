@@ -79,11 +79,13 @@ fn write_addr(mut packet: &mut [u8], target: &TargetAddr) -> io::Result<usize> {
         }
         TargetAddr::Domain(ref domain, port) => {
             packet.write_u8(3).unwrap();
-            if domain.len() > u8::max_value() as usize {
+            let domain_bytes = domain.as_bytes();
+            let domain_len = domain_bytes.len();
+            if domain_len > (u8::max_value() as usize) {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, "domain name too long"));
             }
-            packet.write_u8(domain.len() as u8).unwrap();
-            packet.write_all(domain.as_bytes()).unwrap();
+            packet.write_u8(domain_len as u8).unwrap();
+            packet.write_all(domain_bytes).unwrap();
             packet.write_u16::<BigEndian>(port).unwrap();
         }
     }
