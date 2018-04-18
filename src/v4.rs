@@ -51,14 +51,14 @@ impl Socks4Stream {
     /// to the proxy server using the SOCKS4A protocol extension. If the proxy
     /// server does not support SOCKS4A, consider performing the DNS lookup
     /// locally and passing a `TargetAddr::Ip`.
-    pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
+    pub fn connect<T, U>(proxy: T, target: U, user_id: &str) -> io::Result<Socks4Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        Self::connect_raw(1, proxy, target, userid)
+        Self::connect_raw(1, proxy, target, user_id)
     }
 
-    fn connect_raw<T, U>(command: u8, proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
+    fn connect_raw<T, U>(command: u8, proxy: T, target: U, user_id: &str) -> io::Result<Socks4Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
@@ -80,13 +80,13 @@ impl Socks4Stream {
                 };
                 let _ = packet.write_u16::<BigEndian>(addr.port());
                 let _ = packet.write_u32::<BigEndian>((*addr.ip()).into());
-                let _ = packet.write_all(userid.as_bytes());
+                let _ = packet.write_all(user_id.as_bytes());
                 let _ = packet.write_u8(0);
             }
             TargetAddr::Domain(ref host, port) => {
                 let _ = packet.write_u16::<BigEndian>(port);
                 let _ = packet.write_u32::<BigEndian>(Ipv4Addr::new(0, 0, 0, 1).into());
-                let _ = packet.write_all(userid.as_bytes());
+                let _ = packet.write_all(user_id.as_bytes());
                 let _ = packet.write_u8(0);
                 let _ = packet.extend(host.as_bytes());
                 let _ = packet.write_u8(0);
@@ -97,8 +97,8 @@ impl Socks4Stream {
         let proxy_addr = read_response(&mut socket)?;
 
         Ok(Socks4Stream {
-            socket: socket,
-            proxy_addr: proxy_addr,
+            socket,
+            proxy_addr,
         })
     }
 
@@ -165,11 +165,11 @@ impl Socks4Listener {
     ///
     /// The proxy will filter incoming connections based on the value of
     /// `target`.
-    pub fn bind<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Listener>
+    pub fn bind<T, U>(proxy: T, target: U, user_id: &str) -> io::Result<Socks4Listener>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        Socks4Stream::connect_raw(2, proxy, target, userid).map(Socks4Listener)
+        Socks4Stream::connect_raw(2, proxy, target, user_id).map(Socks4Listener)
     }
 
     /// The address of the proxy-side TCP listener.

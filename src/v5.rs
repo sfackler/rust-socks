@@ -95,7 +95,7 @@ fn write_addr(mut packet: &mut [u8], target: &TargetAddr) -> io::Result<usize> {
 #[derive(Debug)]
 enum Authentication<'a> {
     Password { username: &'a str, password: &'a str },
-    None
+    None,
 }
 
 impl<'a> Authentication<'a> {
@@ -107,10 +107,9 @@ impl<'a> Authentication<'a> {
     }
 
     fn is_no_auth(&self) -> bool {
-        if let Authentication::None = *self {
-            true
-        } else {
-            false
+        match *self {
+            Authentication::None => true,
+            _ => false
         }
     }
 }
@@ -168,17 +167,17 @@ impl Socks5Stream {
         }
 
         if selected_method == 0xff {
-            return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods"))
+            return Err(io::Error::new(io::ErrorKind::Other, "no acceptable auth methods"));
         }
 
         if selected_method != auth.id() && selected_method != Authentication::None.id() {
-            return Err(io::Error::new(io::ErrorKind::Other, "unknown auth method"))
+            return Err(io::Error::new(io::ErrorKind::Other, "unknown auth method"));
         }
 
         match *auth {
             Authentication::Password { username, password } if selected_method == auth.id() => {
                 Self::password_authentication(&mut socket, username, password)?
-            },
+            }
             _ => ()
         }
 
@@ -192,20 +191,28 @@ impl Socks5Stream {
         let proxy_addr = read_response(&mut socket)?;
 
         Ok(Socks5Stream {
-            socket: socket,
-            proxy_addr: proxy_addr,
+            socket,
+            proxy_addr,
         })
     }
 
     fn password_authentication(socket: &mut TcpStream, username: &str, password: &str) -> io::Result<()> {
         if username.len() < 1 || username.len() > 255 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid username"))
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid username"));
         };
         if password.len() < 1 || password.len() > 255 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid password"))
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid password"));
         }
 
-        let mut packet = [0; 515];
+        // From RFC 1929:
+        // Request:
+        //  +----+------+----------+------+----------+
+        //  |VER | ULEN |  UNAME   | PLEN |  PASSWD  |
+        //  +----+------+----------+------+----------+
+        //  | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
+        //  +----+------+----------+------+----------+
+        const PACKET_MAX: usize = 1 + 1 + 255 + 1 + 255;  // hopefully will optimized by compiler
+        let mut packet = [0; PACKET_MAX];
         let packet_size = 3 + username.len() + password.len();
         packet[0] = 1; // version
         packet[1] = username.len() as u8;
@@ -214,6 +221,12 @@ impl Socks5Stream {
         packet[3 + username.len()..packet_size].copy_from_slice(password.as_bytes());
         socket.write_all(&packet[..packet_size])?;
 
+        // Response:
+        //  +----+--------+
+        //  |VER | STATUS |
+        //  +----+--------+
+        //  | 1  |   1    |
+        //  +----+--------+
         let mut buf = [0; 2];
         socket.read_exact(&mut buf)?;
         if buf[0] != 1 {
@@ -367,8 +380,8 @@ impl Socks5Datagram {
         socket.connect(&stream.proxy_addr)?;
 
         Ok(Socks5Datagram {
-            socket: socket,
-            stream: stream,
+            socket,
+            stream,
         })
     }
 
@@ -460,7 +473,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
-            "testpass"
+            "testpass",
         ).unwrap();
         google(socket);
     }
@@ -502,7 +515,7 @@ mod test {
             SOCKS_PROXY_NO_AUTH_ONLY,
             addr,
             "unused_and_invalid_username",
-            "unused_and_invalid_password"
+            "unused_and_invalid_password",
         ).unwrap();
         bind(listener);
     }
@@ -514,7 +527,7 @@ mod test {
             "127.0.0.1:1081",
             addr,
             "testuser",
-            "testpass"
+            "testpass",
         ).unwrap();
         bind(listener);
     }
@@ -548,7 +561,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             "127.0.0.1:15414",
             "testuser",
-            "testpass"
+            "testpass",
         ).unwrap();
         associate(socks, "127.0.0.1:15415");
     }
@@ -601,7 +614,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
-            "invalid"
+            "invalid",
         ).unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
@@ -625,7 +638,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(1),
-            &string_of_size(1)
+            &string_of_size(1),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert_eq!(err.description(), "password authentication failed");
@@ -634,7 +647,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(255)
+            &string_of_size(255),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert_eq!(err.description(), "password authentication failed");
@@ -643,7 +656,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(0),
-            &string_of_size(255)
+            &string_of_size(255),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid username");
@@ -652,7 +665,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(256),
-            &string_of_size(255)
+            &string_of_size(255),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid username");
@@ -661,7 +674,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(0)
+            &string_of_size(0),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid password");
@@ -670,7 +683,7 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(256)
+            &string_of_size(256),
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid password");
