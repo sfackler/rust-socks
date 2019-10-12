@@ -5,8 +5,8 @@ use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream,
                Ipv6Addr, UdpSocket};
 use std::ptr;
 
-use {ToTargetAddr, TargetAddr};
-use writev::WritevExt;
+use crate::{ToTargetAddr, TargetAddr};
+use crate::writev::WritevExt;
 
 const MAX_ADDR_LEN: usize = 260;
 

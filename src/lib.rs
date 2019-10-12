@@ -15,8 +15,8 @@ use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::vec;
 
-pub use v4::{Socks4Stream, Socks4Listener};
-pub use v5::{Socks5Stream, Socks5Listener, Socks5Datagram};
+pub use crate::v4::{Socks4Stream, Socks4Listener};
+pub use crate::v5::{Socks5Stream, Socks5Listener, Socks5Datagram};
 
 mod v4;
 mod v5;

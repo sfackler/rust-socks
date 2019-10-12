@@ -2,7 +2,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr};
 
-use {ToTargetAddr, TargetAddr};
+use crate::{ToTargetAddr, TargetAddr};
 
 fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
     let mut response = [0u8; 8];
