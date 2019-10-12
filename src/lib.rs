@@ -2,15 +2,6 @@
 #![doc(html_root_url="https://docs.rs/socks/0.3.0")]
 #![warn(missing_docs)]
 
-extern crate byteorder;
-
-#[cfg(unix)]
-extern crate libc;
-#[cfg(windows)]
-extern crate winapi;
-#[cfg(windows)]
-extern crate ws2_32;
-
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::vec;
