@@ -1,8 +1,8 @@
-use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream, ToSocketAddrs};
 
-use crate::{ToTargetAddr, TargetAddr};
+use crate::{TargetAddr, ToTargetAddr};
 
 fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
     let mut response = [0u8; 8];
@@ -10,23 +10,40 @@ fn read_response(socket: &mut TcpStream) -> io::Result<SocketAddrV4> {
     let mut response = &response[..];
 
     if response.read_u8()? != 0 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid response version",
+        ));
     }
 
     match response.read_u8()? {
         90 => {}
-        91 => return Err(io::Error::new(io::ErrorKind::Other, "request rejected or failed")),
+        91 => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "request rejected or failed",
+            ))
+        }
         92 => {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                      "request rejected because SOCKS server cannot connect to \
-                                       idnetd on the client"))
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "request rejected because SOCKS server cannot connect to \
+                 idnetd on the client",
+            ))
         }
         93 => {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                      "request rejected because the client program and identd \
-                                       report different user-ids"))
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "request rejected because the client program and identd \
+                 report different user-ids",
+            ))
         }
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response code")),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid response code",
+            ))
+        }
     }
 
     let port = response.read_u16::<BigEndian>()?;
@@ -52,15 +69,17 @@ impl Socks4Stream {
     /// server does not support SOCKS4A, consider performing the DNS lookup
     /// locally and passing a `TargetAddr::Ip`.
     pub fn connect<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
-        where T: ToSocketAddrs,
-              U: ToTargetAddr
+    where
+        T: ToSocketAddrs,
+        U: ToTargetAddr,
     {
         Self::connect_raw(1, proxy, target, userid)
     }
 
     fn connect_raw<T, U>(command: u8, proxy: T, target: U, userid: &str) -> io::Result<Socks4Stream>
-        where T: ToSocketAddrs,
-              U: ToTargetAddr
+    where
+        T: ToSocketAddrs,
+        U: ToTargetAddr,
     {
         let mut socket = TcpStream::connect(proxy)?;
 
@@ -74,8 +93,10 @@ impl Socks4Stream {
                 let addr = match addr {
                     SocketAddr::V4(addr) => addr,
                     SocketAddr::V6(_) => {
-                        return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                                  "SOCKS4 does not support IPv6"));
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "SOCKS4 does not support IPv6",
+                        ));
                     }
                 };
                 let _ = packet.write_u16::<BigEndian>(addr.port());
@@ -166,8 +187,9 @@ impl Socks4Listener {
     /// The proxy will filter incoming connections based on the value of
     /// `target`.
     pub fn bind<T, U>(proxy: T, target: U, userid: &str) -> io::Result<Socks4Listener>
-        where T: ToSocketAddrs,
-              U: ToTargetAddr
+    where
+        T: ToSocketAddrs,
+        U: ToTargetAddr,
     {
         Socks4Stream::connect_raw(2, proxy, target, userid).map(Socks4Listener)
     }
@@ -202,7 +224,7 @@ impl Socks4Listener {
 #[cfg(test)]
 mod test {
     use std::io::{Read, Write};
-    use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs, TcpStream};
+    use std::net::{SocketAddr, SocketAddrV4, TcpStream, ToSocketAddrs};
 
     use super::*;
 
@@ -210,11 +232,9 @@ mod test {
         "google.com:80"
             .to_socket_addrs()
             .unwrap()
-            .filter_map(|a| {
-                match a {
-                    SocketAddr::V4(a) => Some(a),
-                    SocketAddr::V6(_) => None,
-                }
+            .filter_map(|a| match a {
+                SocketAddr::V4(a) => Some(a),
+                SocketAddr::V6(_) => None,
             })
             .next()
             .unwrap()
