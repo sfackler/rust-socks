@@ -190,7 +190,7 @@ impl Socks5Stream {
         command: u8,
         proxy: T,
         target: U,
-        auth: &Authentication,
+        auth: &Authentication<'_>,
     ) -> io::Result<Socks5Stream>
     where
         T: ToSocketAddrs,
@@ -441,7 +441,7 @@ impl Socks5Datagram {
         Self::bind_internal(proxy, addr, &auth)
     }
 
-    fn bind_internal<T, U>(proxy: T, addr: U, auth: &Authentication) -> io::Result<Socks5Datagram>
+    fn bind_internal<T, U>(proxy: T, addr: U, auth: &Authentication<'_>) -> io::Result<Socks5Datagram>
     where
         T: ToSocketAddrs,
         U: ToSocketAddrs,
