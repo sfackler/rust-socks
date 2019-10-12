@@ -1,7 +1,8 @@
 # rust-socks
 [![Build Status](https://travis-ci.org/sfackler/rust-socks.svg?branch=master)](https://travis-ci.org/sfackler/rust-socks)
+[![Crates.io](https://img.shields.io/crates/v/socks.svg)](https://crates.io/crates/socks)
 
-[Documentation](https://docs.rs/socks/0.2.3/socks)
+[Documentation](https://docs.rs/socks/0.3.2/socks)
 
 SOCKS proxy support for Rust.
 

@@ -60,10 +60,10 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use winapi;
-    use ws2_32;
     use std::os::windows::io::AsRawSocket;
     use std::ptr;
+    use winapi;
+    use ws2_32;
 
     use super::*;
 

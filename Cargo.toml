@@ -7,6 +7,7 @@ description = "SOCKS proxy clients"
 repository = "https://github.com/sfackler/rust-socks"
 documentation = "https://docs.rs/socks/0.3.0/socks"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
 byteorder = "1.0"

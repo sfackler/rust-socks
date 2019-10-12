@@ -1,22 +1,13 @@
 //! SOCKS proxy clients
-#![doc(html_root_url="https://docs.rs/socks/0.3.0")]
+#![doc(html_root_url = "https://docs.rs/socks/0.3.0")]
 #![warn(missing_docs)]
-
-extern crate byteorder;
-
-#[cfg(unix)]
-extern crate libc;
-#[cfg(windows)]
-extern crate winapi;
-#[cfg(windows)]
-extern crate ws2_32;
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::vec;
 
-pub use v4::{Socks4Stream, Socks4Listener};
-pub use v5::{Socks5Stream, Socks5Listener, Socks5Datagram};
+pub use crate::v4::{Socks4Listener, Socks4Stream};
+pub use crate::v5::{Socks5Datagram, Socks5Listener, Socks5Stream};
 
 mod v4;
 mod v5;
@@ -141,20 +132,31 @@ impl<'a> ToTargetAddr for &'a str {
         let port_str = match parts_iter.next() {
             Some(s) => s,
             None => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid socket address"))
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid socket address",
+                ))
             }
         };
 
         let host = match parts_iter.next() {
             Some(s) => s,
             None => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid socket address"))
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid socket address",
+                ))
             }
         };
 
         let port: u16 = match port_str.parse() {
             Ok(p) => p,
-            Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid port value")),
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid port value",
+                ))
+            }
         };
 
         (host, port).to_target_addr()
