@@ -1,6 +1,6 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
 use std::cmp;
-use std::io::{self, Read, Write, BufReader};
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
 use std::ptr;
@@ -38,7 +38,6 @@ fn read_addr<R: Read>(socket: &mut R) -> io::Result<TargetAddr> {
 }
 
 fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
-    let mut socket = BufReader::with_capacity(MAX_ADDR_LEN + 3, socket);
 
     if socket.read_u8()? != 5 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response version"));
@@ -61,7 +60,7 @@ fn read_response(socket: &mut TcpStream) -> io::Result<TargetAddr> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid reserved byte"));
     }
 
-    read_addr(&mut socket)
+    read_addr(socket)
 }
 
 fn write_addr(mut packet: &mut [u8], target: &TargetAddr) -> io::Result<usize> {
