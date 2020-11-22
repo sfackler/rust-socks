@@ -4,6 +4,7 @@ use std::io::{self, Read, Write};
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, SocketAddrV6, TcpStream, Ipv4Addr,
                Ipv6Addr, UdpSocket};
 use std::ptr;
+use std::time::Duration;
 
 use {ToTargetAddr, TargetAddr};
 use writev::WritevExt;
@@ -123,28 +124,33 @@ pub struct Socks5Stream {
 
 impl Socks5Stream {
     /// Connects to a target server through a SOCKS5 proxy.
-    pub fn connect<T, U>(proxy: T, target: U) -> io::Result<Socks5Stream>
+    pub fn connect<T, U>(proxy: T, target: U, timeout: Option<Duration>) -> io::Result<Socks5Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        Self::connect_raw(1, proxy, target, &Authentication::None)
+        Self::connect_raw(1, proxy, target, &Authentication::None, timeout)
     }
 
     /// Connects to a target server through a SOCKS5 proxy using given
     /// username and password.
-    pub fn connect_with_password<T, U>(proxy: T, target: U, username: &str, password: &str) -> io::Result<Socks5Stream>
+    pub fn connect_with_password<T, U>(proxy: T, target: U, username: &str, password: &str, timeout: Option<Duration>) -> io::Result<Socks5Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
         let auth = Authentication::Password { username, password };
-        Self::connect_raw(1, proxy, target, &auth)
+        Self::connect_raw(1, proxy, target, &auth, timeout)
     }
 
-    fn connect_raw<T, U>(command: u8, proxy: T, target: U, auth: &Authentication) -> io::Result<Socks5Stream>
+    fn connect_raw<T, U>(command: u8, proxy: T, target: U, auth: &Authentication, timeout: Option<Duration>) -> io::Result<Socks5Stream>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        let mut socket = TcpStream::connect(proxy)?;
+        let mut socket = if let Some(timeout) = timeout {
+            let addr = proxy.to_socket_addrs().unwrap().next().unwrap();
+            TcpStream::connect_timeout(&addr, timeout)?
+        } else {
+            TcpStream::connect(proxy)?
+        };
 
         let target = target.to_target_addr()?;
 
@@ -288,23 +294,23 @@ impl Socks5Listener {
     ///
     /// The proxy will filter incoming connections based on the value of
     /// `target`.
-    pub fn bind<T, U>(proxy: T, target: U) -> io::Result<Socks5Listener>
+    pub fn bind<T, U>(proxy: T, target: U, timeout: Option<Duration>) -> io::Result<Socks5Listener>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
-        Socks5Stream::connect_raw(2, proxy, target, &Authentication::None).map(Socks5Listener)
+        Socks5Stream::connect_raw(2, proxy, target, &Authentication::None, timeout).map(Socks5Listener)
     }
     /// Initiates a BIND request to the specified proxy using given username
     /// and password.
     ///
     /// The proxy will filter incoming connections based on the value of
     /// `target`.
-    pub fn bind_with_password<T, U>(proxy: T, target: U, username: &str, password: &str) -> io::Result<Socks5Listener>
+    pub fn bind_with_password<T, U>(proxy: T, target: U, username: &str, password: &str, timeout: Option<Duration>) -> io::Result<Socks5Listener>
         where T: ToSocketAddrs,
               U: ToTargetAddr
     {
         let auth = Authentication::Password { username, password };
-        Socks5Stream::connect_raw(2, proxy, target, &auth).map(Socks5Listener)
+        Socks5Stream::connect_raw(2, proxy, target, &auth, timeout).map(Socks5Listener)
     }
 
     /// The address of the proxy-side TCP listener.
@@ -336,31 +342,31 @@ pub struct Socks5Datagram {
 impl Socks5Datagram {
     /// Creates a UDP socket bound to the specified address which will have its
     /// traffic routed through the specified proxy.
-    pub fn bind<T, U>(proxy: T, addr: U) -> io::Result<Socks5Datagram>
+    pub fn bind<T, U>(proxy: T, addr: U, timeout: Option<Duration>) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
               U: ToSocketAddrs
     {
-        Self::bind_internal(proxy, addr, &Authentication::None)
+        Self::bind_internal(proxy, addr, &Authentication::None, timeout)
     }
     /// Creates a UDP socket bound to the specified address which will have its
     /// traffic routed through the specified proxy. The given username and password
     /// is used to authenticate to the SOCKS proxy.
-    pub fn bind_with_password<T, U>(proxy: T, addr: U, username: &str, password: &str) -> io::Result<Socks5Datagram>
+    pub fn bind_with_password<T, U>(proxy: T, addr: U, username: &str, password: &str, timeout: Option<Duration>) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
               U: ToSocketAddrs
     {
         let auth = Authentication::Password { username, password };
-        Self::bind_internal(proxy, addr, &auth)
+        Self::bind_internal(proxy, addr, &auth, timeout)
     }
 
-    fn bind_internal<T, U>(proxy: T, addr: U, auth: &Authentication) -> io::Result<Socks5Datagram>
+    fn bind_internal<T, U>(proxy: T, addr: U, auth: &Authentication, timeout: Option<Duration>) -> io::Result<Socks5Datagram>
         where T: ToSocketAddrs,
               U: ToSocketAddrs
     {
         // we don't know what our IP is from the perspective of the proxy, so
         // don't try to pass `addr` in here.
         let dst = TargetAddr::Ip(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
-        let stream = Socks5Stream::connect_raw(3, proxy, dst, auth)?;
+        let stream = Socks5Stream::connect_raw(3, proxy, dst, auth, timeout)?;
 
         let socket = UdpSocket::bind(addr)?;
         socket.connect(&stream.proxy_addr)?;
@@ -448,7 +454,7 @@ mod test {
     #[test]
     fn google_no_auth() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
-        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, addr).unwrap();
+        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, addr, None).unwrap();
         google(socket);
     }
 
@@ -459,7 +465,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
-            "testpass"
+            "testpass",
+            None
         ).unwrap();
         google(socket);
     }
@@ -476,7 +483,7 @@ mod test {
 
     #[test]
     fn google_dns() {
-        let mut socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80").unwrap();
+        let mut socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80", None).unwrap();
 
         socket.write_all(b"GET / HTTP/1.0\r\n\r\n").unwrap();
         let mut result = vec![];
@@ -490,7 +497,7 @@ mod test {
     #[test]
     fn bind_no_auth() {
         let addr = find_address();
-        let listener = Socks5Listener::bind(SOCKS_PROXY_NO_AUTH_ONLY, addr).unwrap();
+        let listener = Socks5Listener::bind(SOCKS_PROXY_NO_AUTH_ONLY, addr, None).unwrap();
         bind(listener);
     }
 
@@ -501,7 +508,8 @@ mod test {
             SOCKS_PROXY_NO_AUTH_ONLY,
             addr,
             "unused_and_invalid_username",
-            "unused_and_invalid_password"
+            "unused_and_invalid_password",
+            None
         ).unwrap();
         bind(listener);
     }
@@ -513,7 +521,8 @@ mod test {
             "127.0.0.1:1081",
             addr,
             "testuser",
-            "testpass"
+            "testpass",
+            None
         ).unwrap();
         bind(listener);
     }
@@ -531,13 +540,13 @@ mod test {
 
     // First figure out our local address that we'll be connecting from
     fn find_address() -> TargetAddr {
-        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80").unwrap();
+        let socket = Socks5Stream::connect(SOCKS_PROXY_NO_AUTH_ONLY, "google.com:80", None).unwrap();
         socket.proxy_addr().to_owned()
     }
 
     #[test]
     fn associate_no_auth() {
-        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15410").unwrap();
+        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15410", None).unwrap();
         associate(socks, "127.0.0.1:15411");
     }
 
@@ -547,7 +556,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             "127.0.0.1:15414",
             "testuser",
-            "testpass"
+            "testpass",
+            None
         ).unwrap();
         associate(socks, "127.0.0.1:15415");
     }
@@ -570,7 +580,7 @@ mod test {
 
     #[test]
     fn associate_long() {
-        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15412").unwrap();
+        let socks = Socks5Datagram::bind(SOCKS_PROXY_NO_AUTH_ONLY, "127.0.0.1:15412", None).unwrap();
         let socket_addr = "127.0.0.1:15413";
         let socket = UdpSocket::bind(socket_addr).unwrap();
 
@@ -600,7 +610,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             "testuser",
-            "invalid"
+            "invalid",
+            None
         ).unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
@@ -610,7 +621,7 @@ mod test {
     #[test]
     fn auth_method_not_supported() {
         let addr = "google.com:80".to_socket_addrs().unwrap().next().unwrap();
-        let err = Socks5Stream::connect(SOCKS_PROXY_PASSWD_ONLY, addr).unwrap_err();
+        let err = Socks5Stream::connect(SOCKS_PROXY_PASSWD_ONLY, addr, None).unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::Other);
         assert_eq!(err.description(), "no acceptable auth methods");
@@ -624,7 +635,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(1),
-            &string_of_size(1)
+            &string_of_size(1),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert_eq!(err.description(), "password authentication failed");
@@ -633,7 +645,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(255)
+            &string_of_size(255),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         assert_eq!(err.description(), "password authentication failed");
@@ -642,7 +655,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(0),
-            &string_of_size(255)
+            &string_of_size(255),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid username");
@@ -651,7 +665,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(256),
-            &string_of_size(255)
+            &string_of_size(255),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid username");
@@ -660,7 +675,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(0)
+            &string_of_size(0),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid password");
@@ -669,7 +685,8 @@ mod test {
             SOCKS_PROXY_PASSWD_ONLY,
             addr,
             &string_of_size(255),
-            &string_of_size(256)
+            &string_of_size(256),
+            None
         ).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(err.description(), "invalid password");
