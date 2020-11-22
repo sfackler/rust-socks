@@ -1,6 +1,6 @@
 [package]
 name = "socks"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "SOCKS proxy clients"
