@@ -8,8 +8,6 @@ extern crate byteorder;
 extern crate libc;
 #[cfg(windows)]
 extern crate winapi;
-#[cfg(windows)]
-extern crate ws2_32;
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};

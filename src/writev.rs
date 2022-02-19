@@ -60,8 +60,9 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use winapi;
-    use ws2_32;
+    use winapi::um::winsock2;
+    use winapi::shared::ws2def;
+    use winapi::shared::minwindef;
     use std::os::windows::io::AsRawSocket;
     use std::ptr;
 
@@ -71,20 +72,20 @@ mod imp {
         fn writev(&self, bufs: [&[u8]; 2]) -> io::Result<usize> {
             unsafe {
                 let mut wsabufs = [
-                    winapi::WSABUF {
-                        len: bufs[0].len() as winapi::u_long,
+                    ws2def::WSABUF {
+                        len: bufs[0].len() as winsock2::u_long,
                         buf: bufs[0].as_ptr() as *const _ as *mut _,
                     },
-                    winapi::WSABUF {
-                        len: bufs[1].len() as winapi::u_long,
+                    ws2def::WSABUF {
+                        len: bufs[1].len() as winsock2::u_long,
                         buf: bufs[1].as_ptr() as *const _ as *mut _,
                     },
                 ];
                 let mut sent = 0;
-                let r = ws2_32::WSASend(
-                    self.as_raw_socket(),
+                let r = winsock2::WSASend(
+                    self.as_raw_socket() as usize,
                     wsabufs.as_mut_ptr(),
-                    bufs.len() as winapi::DWORD,
+                    bufs.len() as minwindef::DWORD,
                     &mut sent,
                     0,
                     ptr::null_mut(),
@@ -101,21 +102,21 @@ mod imp {
         fn readv(&self, bufs: [&mut [u8]; 2]) -> io::Result<usize> {
             unsafe {
                 let mut wsabufs = [
-                    winapi::WSABUF {
-                        len: bufs[0].len() as winapi::u_long,
+                    ws2def::WSABUF {
+                        len: bufs[0].len() as winsock2::u_long,
                         buf: bufs[0].as_mut_ptr() as *mut _,
                     },
-                    winapi::WSABUF {
-                        len: bufs[1].len() as winapi::u_long,
+                    ws2def::WSABUF {
+                        len: bufs[1].len() as winsock2::u_long,
                         buf: bufs[1].as_mut_ptr() as *mut _,
                     },
                 ];
                 let mut recved = 0;
                 let mut flags = 0;
-                let r = ws2_32::WSARecv(
-                    self.as_raw_socket(),
+                let r = winsock2::WSARecv(
+                    self.as_raw_socket() as usize,
                     wsabufs.as_mut_ptr(),
-                    bufs.len() as winapi::DWORD,
+                    bufs.len() as minwindef::DWORD,
                     &mut recved,
                     &mut flags,
                     ptr::null_mut(),
